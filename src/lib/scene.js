@@ -17,68 +17,47 @@ const GAP_X = 44, GAP_Y = 11;  /* between columns, and within one */
 const TOP_GAP_X = 68, TOP_GAP_Y = 30;
 const CHANNEL = 46;            /* the widest empty lane the compactor will leave */
 
-/* ---------- what is visible ---------- */
+/* ---------- what is visible ----------
+   o.open is the set of open groups; o.cone, if given, is a set of declarations to
+   draw on their own instead of the tree; o.measure sizes a box before layout. */
 function build(B, o) {
   const nodes = [], owner = new Int32Array(B.decl.length).fill(-1);
-
-  function add(n) { n.id = nodes.length; nodes.push(n); return n; }
+  const add = (n) => { n.id = nodes.length; nodes.push(n); return n; };
 
   function declNode(di, parent) {
     const d = B.decl[di], t = B.tree[d.g];
     const n = add({
-      kind: "decl", di, gi: d.g, parent, children: null, expanded: false,
-      label: d.label, name: d.id, group: t.name,
-      count: 1, proved: d.state === "proved" ? 1 : 0, state: d.state, sort: d.id,
-      declKind: d.kind, hue: t.hue, tone: t.tone
+      kind: "decl", di, parent, children: null, expanded: false,
+      label: d.label, name: d.id, group: t.name, sort: d.id,
+      count: 1, proved: d.state === "proved" ? 1 : 0, state: d.state,
+      declKind: d.kind, hue: t.hue, tone: t.tone,
     });
     owner[di] = n.id;
     return n;
   }
 
   function groupNode(gi, parent) {
-    const t = B.tree[gi], total = t.sub;
-    if (!total) return null;
+    const t = B.tree[gi];
+    if (!t.sub) return null;
     const n = add({
       kind: "group", gi, parent, children: null, expanded: false,
       label: t.label, name: t.name, short: t.short, sort: t.name,
-      count: total, proved: t.byState.proved, state: t.state,
-      hue: t.hue, tone: t.tone, isModule: t.isModule, ready: t.ready, done: t.done
+      count: t.sub, proved: t.byState.proved, state: t.state,
+      hue: t.hue, tone: t.tone,
     });
-    if (!o.open.has(gi)) {
-      for (const d of t.subDecls) owner[d] = n.id;
-      return n;
-    }
-    n.expanded = true;
-    const kids = [];
-    if (t.kids.length) {
-      t.kids.forEach((k) => { const c = groupNode(k, n); if (c) kids.push(c); });
-    } else {
-      t.decls.forEach((d) => { kids.push(declNode(d, n)); });
-    }
-    if (!kids.length) { n.expanded = false; return n; }
-    n.children = kids;
+    const kids = !o.open.has(gi) ? []
+      : t.kids.length ? t.kids.map((k) => groupNode(k, n)).filter(Boolean)
+        : t.decls.map((d) => declNode(d, n));
+    if (kids.length) { n.expanded = true; n.children = kids; }
+    else for (const d of t.subDecls) owner[d] = n.id;
     return n;
   }
 
-  const root = add({
-    kind: "root", parent: null, children: [], expanded: true,
-    label: "", name: "", count: 0, proved: 0, state: "proved", sort: ""
-  });
-  if (o.mode === "cone" && o.coneSet) {
-    const list = [];
-    o.coneSet.forEach((d) => list.push(d));
-    list.sort((a, b) => (B.decl[a].id < B.decl[b].id ? -1 : 1));
-    root.children = list.map((d) => declNode(d, root));
-  } else {
-    B.treeRoots.forEach((r) => {
-      const c = groupNode(r, root);
-      if (c) root.children.push(c);
-    });
-  }
-  nodes.forEach((n) => {
-    n.depth = 0;
-    for (let p = n.parent; p; p = p.parent) n.depth++;
-  });
+  const root = add({ kind: "root", parent: null, children: [] });
+  root.children = o.cone
+    ? [...o.cone].sort((a, b) => (B.decl[a].id < B.decl[b].id ? -1 : 1)).map((d) => declNode(d, root))
+    : B.treeRoots.map((r) => groupNode(r, root)).filter(Boolean);
+  nodes.forEach((n) => { n.depth = n.parent ? n.parent.depth + 1 : 0; });
 
   /* ---------- the edges between whatever is visible ----------
 
@@ -88,43 +67,31 @@ function build(B, o) {
      what is outside it along one line rather than along one per declaration. */
   nodes.forEach((n) => {
     if (!n.children) return;
-    n.pairs = new Map();
-    n.index = new Map();
-    n.children.forEach((c, i) => { n.index.set(c.id, i); });
+    n.pairs = new Set();
+    n.index = new Map(n.children.map((c, i) => [c.id, i]));
   });
-  const agg = new Map(), raw = new Map();
+  const drawn = new Map(), fine = new Map();
   B.dedges.forEach(([from, to]) => {
     const a = owner[from], b = owner[to];
     if (a < 0 || b < 0 || a === b) return;
     /* What actually touches what, box to box, whatever each is nested in. The cone is
        computed over this, and each of these knows which drawn edge stands in for it,
        so the drawing can light exactly the lines that carry a cone relation. */
-    const rk = a * TD.KEY + b;
-    let rrec = raw.get(rk);
-    if (!rrec) raw.set(rk, rrec = { a: nodes[a], b: nodes[b], w: 0, drawn: null });
-    rrec.w++;
+    let rel = fine.get(a * TD.KEY + b);
+    if (!rel) fine.set(a * TD.KEY + b, rel = { a: nodes[a], b: nodes[b], drawn: null });
+    /* climb to the two children of the deepest container holding both ends */
     let x = nodes[a], y = nodes[b];
     while (x.depth > y.depth) x = x.parent;
     while (y.depth > x.depth) y = y.parent;
-    while (x !== y) { x = x.parent; y = y.parent; }
-    const C = x;                                  /* the common container, and its two */
-    let ca = nodes[a], cb = nodes[b];
-    while (ca.parent !== C) ca = ca.parent;
-    while (cb.parent !== C) cb = cb.parent;
-    if (ca === cb) return;                        /* both ends inside one child */
-    const k = ca.id * TD.KEY + cb.id;
-    let rec = agg.get(k);
-    if (rec) rec.w++;
-    else agg.set(k, rec = { a: ca, b: cb, box: C, w: 1 });
-    rrec.drawn = rec;
+    while (x.parent !== y.parent) { x = x.parent; y = y.parent; }
+    if (x === y) return;                          /* both ends inside one child */
+    const box = x.parent, k = x.id * TD.KEY + y.id;
+    let e = drawn.get(k);
+    if (!e) drawn.set(k, e = { a: x, b: y, box, key: box.index.get(x.id) * TD.KEY + box.index.get(y.id) });
+    rel.drawn = e;
   });
-  const edges = [];
-  agg.forEach((rec) => {
-    rec.key = rec.box.index.get(rec.a.id) * TD.KEY + rec.box.index.get(rec.b.id);
-    rec.box.pairs.set(rec.key, rec.w);
-    edges.push(rec);
-  });
-  const fine = [...raw.values()];
+  const edges = [...drawn.values()];
+  edges.forEach((e) => e.box.pairs.add(e.key));
 
   /* ---------- lay each container out, innermost first ---------- */
   nodes.forEach(o.measure);          /* box size for a leaf, title width for a container */
@@ -134,54 +101,44 @@ function build(B, o) {
   (function place(n, ox, oy) {
     n.ax = ox; n.ay = oy;
     if (!n.children) return;
-    const cx = ox + (n.kind === "root" ? 0 : PAD);
-    const cy = oy + (n.kind === "root" ? 0 : PAD + HEAD);
-    n.cx = cx; n.cy = cy;
-    n.children.forEach((c) => { place(c, cx + c.x, cy + c.y); });
+    n.cx = ox + (n.kind === "root" ? 0 : PAD);
+    n.cy = oy + (n.kind === "root" ? 0 : PAD + HEAD);
+    n.children.forEach((c) => place(c, n.cx + c.x, n.cy + c.y));
   })(root, 0, 0);
 
   /* ---------- which edges the drawing can do without ---------- */
-  edges.forEach((e) => {
-    e.essential = !e.box.redundant || !e.box.redundant.has(e.key);
-  });
+  edges.forEach((e) => { e.essential = !e.box.redundant.has(e.key); });
 
   /* the cone follows what touches what, not what the drawing chose to merge */
-  const adj = { out: [], in: [] };
-  for (let i = 0; i < nodes.length; i++) { adj.out.push([]); adj.in.push([]); }
-  fine.forEach((e) => { adj.out[e.a.id].push(e.b.id); adj.in[e.b.id].push(e.a.id); });
+  const adj = { out: nodes.map(() => []), in: nodes.map(() => []) };
+  fine.forEach((r) => { adj.out[r.a.id].push(r.b.id); adj.in[r.b.id].push(r.a.id); });
 
-  return {
-    root, nodes, edges, fine, owner, adj,
-    width: root.w, height: root.h
-  };
+  return { root, nodes, edges, fine: [...fine.values()], owner, adj, width: root.w, height: root.h };
 }
 
 /* ---------- one container ---------- */
 function layout(n, isTop) {
   if (!n.children) return;           /* a leaf was already measured */
-  n.children.forEach((c) => { layout(c, false); });
+  n.children.forEach((c) => layout(c, false));
 
   const kids = n.children, m = kids.length;
-  const pairs = [];
-  if (n.pairs) n.pairs.forEach((w, k) => { pairs.push([Math.floor(k / TD.KEY), k % TD.KEY]); });
+  const pairs = [...n.pairs].map((k) => [Math.floor(k / TD.KEY), k % TD.KEY]);
   const core = TD.layoutCore(m, pairs, {
     nameOf: (i) => kids[i].sort,
     iterations: m > 400 ? 6 : 16,
-    seeds: m > 900 ? 1 : 0
+    seeds: m > 900 ? 1 : 0,
   });
   const gx = isTop ? TOP_GAP_X : GAP_X, gy = isTop ? TOP_GAP_Y : GAP_Y;
 
   /* columns run left to right, each as wide as the widest thing in it */
-  const L = core.L, colW = [], colX = [];
-  for (let i = 0; i <= L; i++) colW.push(0);
+  const colW = new Array(core.L + 1).fill(0), colX = [];
   for (let i = 0; i < m; i++) colW[core.layer[i]] = Math.max(colW[core.layer[i]], kids[i].w);
   let run = 0;
-  for (let i = 0; i <= L; i++) { colX.push(run); run += colW[i] + gx; }
+  colW.forEach((w) => { colX.push(run); run += w + gx; });
   const contentW = Math.max(0, run - gx);
 
   /* down the column, by the same priority method the layers use */
-  const pos = TD.xAssign(core, (k) => (core.real[k] ? kids[k].h / 2 : 2), gy,
-    m > 400 ? 8 : 16);
+  const pos = TD.xAssign(core, (k) => (core.real[k] ? kids[k].h / 2 : 2), gy, m > 400 ? 8 : 16);
   squeeze(core, kids, pos, gy);
 
   let lo = Infinity, hi = -Infinity;
@@ -189,36 +146,27 @@ function layout(n, isTop) {
     lo = Math.min(lo, pos[i] - kids[i].h / 2);
     hi = Math.max(hi, pos[i] + kids[i].h / 2);
   }
-  if (!isFinite(lo)) { lo = 0; hi = 0; }
-  for (let i = 0; i < core.N2; i++) pos[i] -= lo;
-  const contentH = hi - lo;
-
+  const contentH = m ? hi - lo : 0;
   for (let i = 0; i < m; i++) {
     const l = core.layer[i];
     /* centred in its column: one open container makes a column far wider than its
        neighbours need, and hugging either edge would put all of that slack on one
        side of every edge that crosses it */
     kids[i].x = colX[l] + (colW[l] - kids[i].w) / 2;
-    kids[i].y = pos[i] - kids[i].h / 2;
-    kids[i].layer = l;
+    kids[i].y = pos[i] - lo - kids[i].h / 2;
   }
 
   /* the shortcuts: pairs the reduction found nothing to say, and the ones it reversed */
-  n.redundant = new Set();
-  const inRed = new Set();
-  core.red.forEach(([a, b]) => { inRed.add(a * TD.KEY + b); });
-  if (n.pairs) n.pairs.forEach((w, k) => { if (!inRed.has(k)) n.redundant.add(k); });
-  core.back.forEach(([a, b]) => { n.redundant.add(a * TD.KEY + b); });
+  const inRed = new Set(core.red.map(([a, b]) => a * TD.KEY + b));
+  n.redundant = new Set([...n.pairs].filter((k) => !inRed.has(k)));
+  core.back.forEach(([a, b]) => n.redundant.add(a * TD.KEY + b));
 
-  n.contentW = contentW; n.contentH = contentH;
-  n.layers = L + 1;
   if (n.kind === "root") { n.w = contentW; n.h = contentH; }
   else {
-    n.w = Math.max(contentW + 2 * PAD, n.headW || 0);
+    n.w = Math.max(contentW + 2 * PAD, n.headW);
     n.h = contentH + 2 * PAD + HEAD;
   }
 }
-
 
 /* Squeeze out the empty lanes. The priority method places each column well but
    says nothing about the height of the whole block, and a container of a few

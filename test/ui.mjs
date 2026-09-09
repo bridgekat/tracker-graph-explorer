@@ -146,11 +146,17 @@ try {
   };
   await send("Page.enable");
   await send("Runtime.enable");
+  /* anything the page throws, so that the last check means something */
+  await send("Page.addScriptToEvaluateOnNewDocument", {
+    source: "window.__errs = []; addEventListener('error', e => __errs.push(e.message));"
+      + " addEventListener('unhandledrejection', e => __errs.push(String(e.reason)));",
+  });
   await send("Page.navigate", { url: URL_ });
   await sleep(3500);
 
   check("standards mode", (await evaluate("return document.compatMode")) === "CSS1Compat");
-  const loaded = await evaluate("return document.querySelectorAll('#exSvg .ex-node').length");
+  const boxes = () => evaluate("return document.querySelectorAll('#exSvg .ex-node').length");
+  const loaded = await boxes();
   check("graph drawn", loaded > 0, `${loaded} boxes`);
 
   /* --- select: click the body of a box --- */
@@ -163,13 +169,13 @@ try {
     `detail=${after.title} outlined=${after.sel}`);
 
   /* --- expand: click the + --- */
-  const before = await evaluate("return document.getElementById('exStats').textContent");
+  const before = await boxes();
   at = await evaluate(locate("Numlib/Krylov,"));
   await clickAt(...at.toggle);
-  let stats = await evaluate("return document.getElementById('exStats').textContent");
+  const more = await boxes();
   const opened = await evaluate(`return !![...document.querySelectorAll('#exSvg .ex-node.grp')]
     .find(e => e.getAttribute('aria-label') === 'Numlib/Krylov/Arnoldi, 28 results, proved. Enter to open it.')`);
-  check("＋ expands the box", stats !== before && opened, `${before} → ${stats}`);
+  check("＋ expands the box", more > before && opened, `${before} → ${more} boxes`);
 
   /* --- the opened group is a container holding its children --- */
   const nested = await evaluate(`
@@ -184,8 +190,8 @@ try {
   /* --- collapse: click the − on the container header --- */
   at = await evaluate(locate("Numlib/Krylov,"));
   await clickAt(...at.toggle);
-  const back = await evaluate("return document.getElementById('exStats').textContent");
-  check("− collapses it again", back === before, `${stats} → ${back}`);
+  const back = await boxes();
+  check("− collapses it again", back === before, `${more} → ${back} boxes`);
 
   /* --- a drag pans and does not clear the selection --- */
   const camBefore = await evaluate("return document.getElementById('exScene').getAttribute('transform')");
@@ -222,7 +228,6 @@ try {
         rows: d.querySelectorAll("table tbody tr").length,
         pre: d.querySelectorAll("pre code").length,
         boldCode: d.querySelectorAll("b code, i code").length,
-        raw: d.innerHTML.indexOf("&lt;") >= 0 || true,
       };
     };
     const table = await pick("NumlibSurface/SaadSparse");

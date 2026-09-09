@@ -8,19 +8,12 @@
 :root {
   color-scheme: light;
   --plane: var(--color-gray-100);
-  --surface: var(--color-gray-50);
   --sunken: #e9e8e3;
   --ink: var(--color-gray-950);
   --ink2: var(--color-gray-700);
   --ink3: var(--color-gray-500);
   --rule: var(--color-gray-200);
-  --axis: var(--color-gray-300);
-  --ring: rgba(11, 11, 11, .11);
   --s1: var(--color-primary-500);
-  --s2: #eb6834;
-  --s2d: #a53d17;
-  --s3: #1baf7a;
-  --s3d: #0e6d4b;
   --st-proved: #0ca30c;
   --st-stated: #fab219;
   --st-open: #a9a79f;
@@ -32,7 +25,6 @@
   --nf-axioms: #fbe3d7;
   --nf-wrong: #f9dcdc;
   --wash: rgba(11, 11, 11, .055);
-  --hover: rgba(11, 11, 11, .04);
   --edge: rgba(11, 11, 11, .34);
   --edgefaint: rgba(11, 11, 11, .14);
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -42,26 +34,18 @@
 :root.dark {
   color-scheme: dark;
   --plane: var(--color-gray-950);
-  --surface: var(--color-gray-900);
   --sunken: #131312;
   --ink: #ffffff;
   --ink2: var(--color-gray-300);
   --ink3: var(--color-gray-500);
   --rule: var(--color-gray-800);
-  --axis: #383835;
-  --ring: rgba(255, 255, 255, .12);
   --s1: var(--color-primary-400);
-  --s2: #d95926;
-  --s2d: #f08a5c;
-  --s3: #199e70;
-  --s3d: #4fc79c;
   --nf-proved: #12331b;
   --nf-stated: #3b2f11;
   --nf-open: #262624;
   --nf-axioms: #3b2217;
   --nf-wrong: #3b1b1b;
   --wash: rgba(255, 255, 255, .075);
-  --hover: rgba(255, 255, 255, .055);
   --edge: rgba(255, 255, 255, .36);
   --edgefaint: rgba(255, 255, 255, .16);
 }

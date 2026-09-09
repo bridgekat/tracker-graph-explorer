@@ -63,21 +63,20 @@ function buildBase(g) {
     T.push(rec);
     return rec.i;
   }
-  function blank(name, parent, desc, done, ready, implied) {
+  function blank(name, parent, desc, done, ready) {
     return {
       i: -1, name, label: lastSeg(name, "/"), short: name,
       parentName: parent || null, parent: null, kids: [], level: 0,
       decls: [], subDecls: [], byState: zeroStates(), state: "open",
-      desc: desc || "", done: !!done, ready: !!ready, topic: -1, hue: 0,
-      implied: !!implied
+      desc: desc || "", done: !!done, ready: !!ready, topic: -1, hue: 0, tone: 0
     };
   }
   g.groups.forEach((x) => {
-    if (gidx[x.name] === undefined) addGroup(blank(x.name, x.parent, x.desc, x.done, x.ready, false));
+    if (gidx[x.name] === undefined) addGroup(blank(x.name, x.parent, x.desc, x.done, x.ready));
   });
   /* a node may name a group the plan does not list; it still needs a home */
   g.nodes.forEach((n) => {
-    if (gidx[n.group] === undefined) addGroup(blank(n.group, null, "", false, false, true));
+    if (gidx[n.group] === undefined) addGroup(blank(n.group));
   });
   T.forEach((t) => {
     const p = t.parentName != null ? gidx[t.parentName] : undefined;
@@ -113,40 +112,33 @@ function buildBase(g) {
     let cur = t.i;
     while (T[cur].level > 1) cur = T[cur].parent;
     t.topic = cur;
-    let r = t.i;
-    while (T[r].parent !== null) r = T[r].parent;
-    t.root = r;
   });
 
-  const roots = treeRoots.map((r) => T[r].name);
-  const rootPrefix = roots.length === 1 ? roots[0] + "/" : null;
-  const shortOf = (name) =>
-    (rootPrefix && name.startsWith(rootPrefix) ? name.slice(rootPrefix.length) : name);
-  T.forEach((t) => { t.short = shortOf(t.name); });
+  /* with one root, its name is noise in front of every group's */
+  const rootPrefix = treeRoots.length === 1 ? T[treeRoots[0]].name + "/" : null;
+  T.forEach((t) => {
+    t.short = rootPrefix && t.name.startsWith(rootPrefix) ? t.name.slice(rootPrefix.length) : t.name;
+  });
 
   /* ---- the declarations --------------------------------------- */
-  const D = [], didx = {}, states = zeroStates(), kinds = {};
+  const D = [], didx = {};
   g.nodes.forEach((n) => {
-    const st = n.wrong ? "wrong" : normState(n.state);
-    const kd = n.kind === "definition" ? "definition" : (n.kind === "theorem" ? "theorem" : (n.kind || "other"));
     const d = {
       i: D.length, id: n.id, label: lastSeg(n.id, "."), g: gidx[n.group],
-      kind: kd, state: st, desc: n.desc || "", source: n.source || null,
-      wrong: n.wrong || null, deprecated: n.deprecated || null, path: null
+      kind: n.kind || "other", state: n.wrong ? "wrong" : normState(n.state),
+      desc: n.desc || "", source: n.source || null,
+      wrong: n.wrong || null, deprecated: n.deprecated || null
     };
     didx[n.id] = d.i;
     D.push(d);
-    states[st]++;
-    kinds[kd] = (kinds[kd] || 0) + 1;
   });
   /* attach each declaration to its group and to every ancestor of it */
   D.forEach((d) => {
-    let cur = d.g;
-    const path = [];
-    T[cur].decls.push(d.i);
-    while (cur !== null) { path.push(cur); T[cur].subDecls.push(d.i); T[cur].byState[d.state]++; cur = T[cur].parent; }
-    path.reverse();
-    d.path = path;                              /* root … own group */
+    T[d.g].decls.push(d.i);
+    for (let cur = d.g; cur !== null; cur = T[cur].parent) {
+      T[cur].subDecls.push(d.i);
+      T[cur].byState[d.state]++;
+    }
   });
   T.forEach((t) => { t.sub = t.subDecls.length; t.state = rollState(t.byState); });
 
@@ -157,7 +149,7 @@ function buildBase(g) {
   g.edges.forEach((e) => {
     const u = didx[e.from], v = didx[e.to];
     if (u === undefined || v === undefined || u === v) { dangling++; return; }
-    DE.push([u, v, (e.real ? 1 : 0) | (e.suggested ? 2 : 0)]);
+    DE.push([u, v]);
     dout[u].push(v); din[v].push(u);
   });
 
@@ -169,37 +161,24 @@ function buildBase(g) {
   const bySize = (a, b) => T[b].sub - T[a].sub || (T[a].name < T[b].name ? -1 : 1);
   const liveRoots = treeRoots.filter((r) => T[r].sub).sort(bySize);
   const band = liveRoots.length > 1 ? (360 / liveRoots.length) * 0.44 : 320;
-  const topics = [];
   liveRoots.forEach((r, ri) => {
     const base = Math.round((205 + ri * 360 / liveRoots.length) % 360);
-    T[r].hue = base; T[r].tone = 0; T[r].topicSlot = 0;
-    const kids = [];
-    T.forEach((t) => { if (t.sub && t.root === r && t.topic === t.i && t.level === 1) kids.push(t.i); });
-    if (!kids.length) { topics.push(r); return; }   /* a root that holds results itself */
-    kids.sort(bySize);
+    T[r].hue = base;
+    const kids = T[r].kids.filter((k) => T[k].sub).sort(bySize);
     const m = kids.length, step = m > 1 ? Math.min(17, band / (m - 1)) : 0;
     kids.forEach((ti, k) => {
       T[ti].hue = Math.round((base + (k - (m - 1) / 2) * step + 360) % 360);
       T[ti].tone = k % 3;
-      T[ti].topicSlot = k;
-      topics.push(ti);
     });
   });
-  T.forEach((t) => {
-    const src = T[t.topic];
-    t.hue = src.hue || 0; t.tone = src.tone || 0; t.topicSlot = src.topicSlot || 0;
-  });
-
-  const modules = T.filter((t) => t.decls.length).length;
+  T.forEach((t) => { t.hue = T[t.topic].hue; t.tone = T[t.topic].tone; });
 
   return {
-    tree: T, gidx, treeRoots, topics, roots,
-    decl: D, didx, dedges: DE, dout, din,
+    tree: T, treeRoots, decl: D, dedges: DE, dout, din,
     meta: {
-      nodes: D.length, groups: g.groups.length, modules,
+      nodes: D.length, modules: T.filter((t) => t.decls.length).length,
       edges: g.edges.length, dangling,
-      states, kinds,
-      rootDesc: (T[treeRoots[0]] || {}).desc || ""
+      rootDesc: T[treeRoots[0]].desc
     }
   };
 }
@@ -207,15 +186,7 @@ function buildBase(g) {
    layoutCore — the layered layout of any DAG, up to ordering.
    pairs: [a, b] means "a depends on b", so a is drawn above b.
    ================================================================ */
-function layoutCore(R, pairs, opt) {
-  opt = opt || {};
-  if (!R) {
-    return {
-      R: 0, L: 0, N2: 0, layer: new Int32Array(0), lay: [], real: [], rows: [],
-      rank: new Int32Array(0), red: [], back: [], chains: [], up: [], dn: [],
-      topo: [], crossings: 0, routed: 0
-    };
-  }
+function layoutCore(R, pairs, opt = {}) {
   const succ = [], pred = [];
   for (let i = 0; i < R; i++) { succ.push(new Set()); pred.push(new Set()); }
   pairs.forEach(([a, b]) => {
@@ -466,11 +437,7 @@ function layoutCore(R, pairs, opt) {
   for (let l = 0; l <= L; l++) rows[l] = best[l];
   reindex();
 
-  return {
-    R, L, N2, layer, lay, real, rows, rank,
-    red, back, chains, up, dn, topo,
-    crossings: bestC, routed: N2 - R
-  };
+  return { L, N2, layer, real, rows, up, dn, red, back };
 }
 
 /* --- x by the priority method: routing nodes first, so long edges straighten.
@@ -572,4 +539,4 @@ function cone(base, seeds, dir, radius) {
   return out;
 }
 
-export { STATES, KEY, buildBase, layoutCore, xAssign, cone, rollState };
+export { STATES, KEY, buildBase, layoutCore, xAssign, cone };

@@ -62,12 +62,12 @@ a diagram, and it is the level at which "why is this here" has an answer.
 ## What it derives
 
 Only the three arrays are read: `groups` for the tree, `nodes` for `group`, `kind`, `state`, `desc`,
-`source`, `wrong` and `deprecated`, and `edges` for `from`, `to`, `real` and `suggested`. Everything
-else in the picture is computed here, for the view on screen, every time it changes.
+`source`, `wrong` and `deprecated`, and `edges` for `from` and `to`. Everything else in the picture
+is computed here, for the view on screen, every time it changes.
 
 * **The rollup.** Each declaration edge is carried up to whichever boxes are visible and the
-  parallel ones are merged, so an edge between two closed groups is weighted by how many result
-  dependencies it stands for, and an edge between two declarations is exactly one.
+  parallel ones are merged, so two closed groups are joined by one line however many result
+  dependencies run between them.
 * **Where an edge belongs.** Every edge is laid out — and drawn — in the deepest container holding
   both of its ends, between that container's own two children. So a view shows each dependency at
   the level it has been opened to: the declarations inside a module you opened are wired to each
@@ -118,12 +118,13 @@ become markup. There is no `{@html}` anywhere, and a test asserts it.
 
 | file | what it is |
 |---|---|
-| `src/App.svelte` | the window: the bar, the three panes, the status strip |
-| `src/IndexPane.svelte` | the search, the filters and the plan's tree |
+| `src/App.svelte` | the window: the bars and the three panes |
+| `src/IndexPane.svelte` | the search and the plan's tree |
 | `src/DetailPane.svelte` | whatever is selected, in full |
 | `src/Prose.svelte`, `src/Inline.svelte` | a Lean doc comment, from marked's tokens |
-| `src/Canvas.svelte`, `src/Grip.svelte` | the viewport and its overlays; the pane splitters |
-| `src/app.css` | the design tokens and the whole of the look, the canvas included |
+| `src/StateDot.svelte` | the coloured dot that says what state a thing is in |
+| `src/Canvas.svelte` | the viewport, its overlays and the tooltip |
+| `src/app.css`, `src/styles/` | the palette, the tokens and the whole of the look, the canvas included |
 | `src/lib/derive.js` | reading a graph, and the layered layout of any DAG — no DOM in it |
 | `src/lib/scene.js` | the nested scene: what boxes exist for an expansion state, and where |
 | `src/lib/canvas.js` | the SVG drawing, and the pointer and key handling on it |
