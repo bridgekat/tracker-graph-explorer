@@ -263,39 +263,43 @@ export function createCanvas({ svg, viewport, on }) {
     }
     return d;
   }
-  /* the same route as a polyline of M points at equal steps along it, which is
-     what two routes with nothing else in common can be tweened between */
-  function resample(P, M) {
-    const bez = (out, cps) => {
-      const n = cps.length - 1;
-      for (let k = 1; k <= 8; k++) {
-        const t = k / 8, u = 1 - t;
-        let x = 0, y = 0;
-        cps.forEach(([px, py], i) => {
-          const w = (n === 3 ? [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t] : [u * u, 2 * u * t, t * t])[i];
-          x += w * px; y += w * py;
-        });
-        out.push([x, y]);
-      }
-    };
-    const poly = [P[0]];
+  /* The same route as a list of cubic pieces, each four points. A line or a
+     quadratic piece is raised to a cubic that draws the same curve, so two routes
+     can be compared piece by piece. */
+  const mix = (p, q, t) => [lerp(p[0], q[0], t), lerp(p[1], q[1], t)];
+  function cubics(P) {
+    const out = [];
+    let from = P[0];
     for (let i = 1; i < P.length;) {
-      const left = P.length - i, from = poly[poly.length - 1];
-      if (left >= 3) { bez(poly, [from, P[i], P[i + 1], P[i + 2]]); i += 3; }
-      else if (left === 2) { bez(poly, [from, P[i], P[i + 1]]); i += 2; }
-      else { poly.push(P[i]); i += 1; }
-    }
-    const at = [0];
-    for (let i = 1; i < poly.length; i++) at.push(at[i - 1] + Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]));
-    const total = at[at.length - 1], out = [];
-    let j = 0;
-    for (let m = 0; m < M; m++) {
-      const s = total * m / (M - 1);
-      while (j < at.length - 2 && at[j + 1] < s) j++;
-      const span = at[j + 1] - at[j], t = span > 0 ? (s - at[j]) / span : 0;
-      out.push([lerp(poly[j][0], poly[j + 1][0], t), lerp(poly[j][1], poly[j + 1][1], t)]);
+      const left = P.length - i;
+      if (left >= 3) { out.push([from, P[i], P[i + 1], P[i + 2]]); i += 3; }
+      else if (left === 2) { out.push([from, mix(from, P[i], 2 / 3), mix(P[i + 1], P[i], 2 / 3), P[i + 1]]); i += 2; }
+      else { out.push([from, mix(from, P[i], 1 / 3), mix(from, P[i], 2 / 3), P[i]]); i += 1; }
+      from = out[out.length - 1][3];
     }
     return out;
+  }
+  /* Give two routes the same number of pieces without changing what either
+     draws: the one with fewer has its longest piece split in two at its middle,
+     by de Casteljau, until the counts agree. Then the control points can be
+     tweened one for one, and the edge is a true curve at every step. */
+  function matchPieces(A, B) {
+    const chord = ([a, , , d]) => Math.hypot(d[0] - a[0], d[1] - a[1]);
+    const split = ([p0, p1, p2, p3]) => {
+      const p01 = mix(p0, p1, 0.5), p12 = mix(p1, p2, 0.5), p23 = mix(p2, p3, 0.5);
+      const p012 = mix(p01, p12, 0.5), p123 = mix(p12, p23, 0.5), m = mix(p012, p123, 0.5);
+      return [[p0, p01, p012, m], [m, p123, p23, p3]];
+    };
+    const grow = (L, n) => {
+      L = L.slice();
+      while (L.length < n) {
+        let k = 0;
+        for (let i = 1; i < L.length; i++) if (chord(L[i]) > chord(L[k])) k = i;
+        L.splice(k, 1, ...split(L[k]));
+      }
+      return L;
+    };
+    return [grow(A, B.length), grow(B, A.length)];
   }
   function drawEdges() {
     S.edges.forEach((e) => {
@@ -429,7 +433,13 @@ export function createCanvas({ svg, viewport, on }) {
     prev.S.nodes.forEach((o) => { if (o.kind !== "root") oldOf.set(keyOf(o), o); });
     S.nodes.forEach((n) => { if (n.kind !== "root") newOf.set(keyOf(n), n); });
     const steps = [], fades = [], reset = [];
-    const fade = (elm, a, b, t0, t1) => fades.push({ elm, a, b, t0, t1 });
+    /* A fade runs between nothing and the element's own opacity — which, with a
+       box focused, is the dimmed one for most of the drawing. It is set inline,
+       which would otherwise override the dimming and flash the thing to full. */
+    const fade = (elm, a, b, t0, t1) => {
+      const own = parseFloat(getComputedStyle(elm).opacity);
+      fades.push({ elm, a: a * own, b: b * own, t0, t1 });
+    };
     /* where a parent's content origin was, in the old scene's frame */
     const originOf = (p) => (p.kind === "root" ? [0, 0] : [p.ax + SC.PAD, p.ay + SC.PAD + SC.HEAD]);
     /* tween a box from one rectangle to another, both absolute, in its own frame:
@@ -479,7 +489,6 @@ export function createCanvas({ svg, viewport, on }) {
     const edgeKey = (e) => keyOf(e.a) + ">" + keyOf(e.b);
     const oldEdge = new Map(prev.edgeEls.map((p) => [edgeKey(p.__e), p]));
     const inFrame = (e) => routeOf(e).map(([x, y]) => [x - e.box.cx, y - e.box.cy]);
-    const M = 24;
     edgeEls.forEach((p) => {
       const e = p.__e, op = oldEdge.get(edgeKey(e));
       if (!op) { fade(p, 0, 1, 0.55, 1); return; }
@@ -488,10 +497,11 @@ export function createCanvas({ svg, viewport, on }) {
          the route only needs tweening if it changed within that frame */
       const r0 = inFrame(op.__e), r1 = inFrame(e);
       if (r0.length === r1.length && r0.every(([x, y], i) => Math.abs(x - r1[i][0]) < 0.05 && Math.abs(y - r1[i][1]) < 0.05)) return;
-      const a = resample(r0, M), b = resample(r1, M), cx = e.box.cx, cy = e.box.cy;
+      const [A, B] = matchPieces(cubics(r0), cubics(r1)), cx = e.box.cx, cy = e.box.cy;
+      const at = (a, b, t) => `${r2(lerp(a[0], b[0], t) + cx)},${r2(lerp(a[1], b[1], t) + cy)}`;
       steps.push((t) => {
-        let d = "";
-        for (let i = 0; i < M; i++) d += (i ? "L" : "M") + r2(lerp(a[i][0], b[i][0], t) + cx) + "," + r2(lerp(a[i][1], b[i][1], t) + cy);
+        let d = `M${at(A[0][0], B[0][0], t)}`;
+        for (let i = 0; i < A.length; i++) d += `C${at(A[i][1], B[i][1], t)} ${at(A[i][2], B[i][2], t)} ${at(A[i][3], B[i][3], t)}`;
         p.setAttribute("d", d);
       });
       reset.push(() => p.setAttribute("d", edgePath(e)));
@@ -546,7 +556,12 @@ export function createCanvas({ svg, viewport, on }) {
       reset.forEach((f) => f());
       fades.forEach(({ elm }) => { elm.style.opacity = ""; });
       prev.sceneG.remove();
+      sceneG.classList.remove("ex-moving");
     };
+    /* the colour transitions would smear every step of an inline fade over their
+       own duration, so they are off while a scene is in motion */
+    sceneG.classList.add("ex-moving");
+    prev.sceneG.classList.add("ex-moving");
     const start = performance.now();
     const frame = (now) => {
       const t = Math.min(1, (now - start) / D);
