@@ -15,6 +15,7 @@
     setCone,
     toggleGroup,
   } from "./lib/state.svelte.js";
+  import { bakedGraph } from "./lib/site.js";
   import { fmt } from "./lib/util.js";
 
   let svg, viewport;
@@ -108,7 +109,10 @@
         </div>
       </Card>
     </div>
-  {:else if !app.base}
+    <!-- Every way in this card offers is a way of loading another graph, so a page built
+         around one does not show it. Reaching here at all means that graph did not read,
+         and the error above it is the whole of what there is to say. -->
+  {:else if !app.base && !bakedGraph}
     <div
       id="exEmpty"
       class="absolute inset-0 flex items-center justify-center overflow-y-auto p-6"

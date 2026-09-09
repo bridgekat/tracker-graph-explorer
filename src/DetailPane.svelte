@@ -2,8 +2,10 @@
      declarations it rests on and that rest on it — each one a way to go there. -->
 <script>
   import { Badge, Button } from "flowbite-svelte";
+  import { ArrowUpRightFromSquareOutline } from "flowbite-svelte-icons";
   import Prose from "./Prose.svelte";
   import StateDot from "./StateDot.svelte";
+  import { declDocs, docsRoot, moduleDocs } from "./lib/site.js";
   import { app, select } from "./lib/state.svelte.js";
   import { STATE_LABEL, fmt, plural } from "./lib/util.js";
   import { STATES } from "./lib/derive.js";
@@ -13,6 +15,9 @@
   const group = $derived(app.sel?.t === 0 ? B.tree[app.sel.i] : null);
   const decl = $derived(app.sel?.t === 1 ? B.decl[app.sel.i] : null);
   const states = $derived(group ? STATES.filter((s) => group.byState[s]) : []);
+  /* a group has a page in the API docs once its module is in the library, which is
+     what one of its own declarations being anything but open says */
+  const attached = $derived(!!group && group.decls.some((i) => B.decl[i].state !== "open"));
 
   let copied = $state(false);
   function copy(id) {
@@ -31,6 +36,8 @@
     "hover:bg-gray-100 dark:hover:bg-gray-800";
   const MONO = "font-mono text-[11px] break-all";
   const MUTED = "text-xs text-gray-500";
+  /* the API docs are another site, so they open in another tab */
+  const EXT = { target: "_blank", rel: "noopener noreferrer" };
 </script>
 
 <div id="exDetail" class="min-h-0 flex-1 overflow-y-auto p-3">
@@ -52,6 +59,12 @@
     </div>
     <h3 class="text-base font-semibold text-gray-950 dark:text-white">{group.label}</h3>
     <div class="mt-1 {MONO} text-gray-500">module {group.name.split("/").join(".")}</div>
+
+    {#if docsRoot && attached}
+      <Button size="xs" color="alternative" class="mt-3" href={moduleDocs(group.name)} {...EXT}>
+        API docs<ArrowUpRightFromSquareOutline class="ms-1.5 h-3 w-3" />
+      </Button>
+    {/if}
 
     <div class="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
       {#each states as s}
@@ -119,15 +132,26 @@
         onclick={() => copy(decl.id)}>{copied ? "copied" : "copy"}</Button
       >
     </div>
-    <Button
-      size="xs"
-      color="alternative"
-      class="mt-3"
-      onclick={() => {
-        app.mode = "tree";
-        select({ t: 1, i: decl.i }, true);
-      }}>Show in the graph</Button
-    >
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <Button
+        size="xs"
+        color="alternative"
+        onclick={() => {
+          app.mode = "tree";
+          select({ t: 1, i: decl.i }, true);
+        }}>Show in the graph</Button
+      >
+      {#if docsRoot && decl.state !== "open"}
+        <Button
+          size="xs"
+          color="alternative"
+          href={declDocs(B.tree[decl.g].name, decl.id)}
+          {...EXT}
+        >
+          API docs<ArrowUpRightFromSquareOutline class="ms-1.5 h-3 w-3" />
+        </Button>
+      {/if}
+    </div>
 
     {#if decl.wrong}
       <h4 class={WARN}>Marked wrong</h4>

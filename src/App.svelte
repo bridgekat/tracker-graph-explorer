@@ -10,11 +10,13 @@
   import {
     SunOutline,
     MoonOutline,
+    DownloadOutline,
     FolderOpenOutline,
     ZoomInOutline,
     ZoomOutOutline,
     ExpandOutline,
   } from "flowbite-svelte-icons";
+  import { bakedGraph, bakedName, downloadGraph } from "./lib/site.js";
   import IndexPane from "./IndexPane.svelte";
   import DetailPane from "./DetailPane.svelte";
   import Canvas from "./Canvas.svelte";
@@ -42,10 +44,13 @@
     setColour(app.colour);
   }
 
+  /* A page built around one graph does not take another, but it still has to swallow the
+     drop: left to itself the browser navigates away from the page to whatever was
+     dropped on it, which is a worse answer than nothing happening. */
   function onDrop(e) {
     e.preventDefault();
     dragging = false;
-    readFile(e.dataTransfer?.files?.[0]);
+    if (!bakedGraph) readFile(e.dataTransfer?.files?.[0]);
   }
 
   /* how far to open the whole tree at once */
@@ -104,7 +109,7 @@
 <svelte:window
   ondragover={(e) => {
     e.preventDefault();
-    dragging = true;
+    if (!bakedGraph) dragging = true;
   }}
   ondragleave={(e) => {
     if (e.relatedTarget === null) dragging = false;
@@ -126,9 +131,22 @@
         {summary}
       </span>
       <div class="ms-auto flex shrink-0 items-center gap-2">
-        <Button id="fileBtn" size="xs" color="alternative" onclick={pickFile}>
-          <FolderOpenOutline class="me-1.5 h-4 w-4" />Open graph JSON
-        </Button>
+        <!-- the graph is the build's, so the way out of the page is the way in reversed -->
+        {#if bakedGraph}
+          <Button
+            id="saveBtn"
+            size="xs"
+            color="alternative"
+            onclick={downloadGraph}
+            title="Download {bakedName}"
+          >
+            <DownloadOutline class="me-1.5 h-4 w-4" />Download graph JSON
+          </Button>
+        {:else}
+          <Button id="fileBtn" size="xs" color="alternative" onclick={pickFile}>
+            <FolderOpenOutline class="me-1.5 h-4 w-4" />Open graph JSON
+          </Button>
+        {/if}
         <Button
           id="themeBtn"
           size="xs"

@@ -30,7 +30,10 @@ export function attachCanvas(c) {
   canvas = c;
   c.setColour(app.colour);
   c.setEdges(app.edges);
-  if (app.base) c.setBase(app.base);
+  /* A graph baked into the page is read before the canvas exists, so the expansion
+     readText chose has nothing to draw it on and rebuild() gave up. Drawing it is this
+     attachment's job; a page that arrives at its graph any other way already has one. */
+  if (app.base) { c.setBase(app.base); rebuild(); }
 }
 export const zoomBy = (mult) => canvas?.zoomBy(mult);
 export const fit = () => canvas?.fit();

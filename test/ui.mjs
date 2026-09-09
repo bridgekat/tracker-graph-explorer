@@ -171,6 +171,20 @@ try {
   for (let i = 0; i < 40 && !loaded; i++) { loaded = await boxes(); if (!loaded) await sleep(250); }
   check("graph drawn", loaded > 0, `${loaded} boxes`);
 
+  /* --- what the build baked in, if anything ---
+     A page built around one graph is showing that one, whatever `?graph=` says, and the
+     ways of loading another are gone: what stands where they were is the download of the
+     graph it was built with. */
+  const pinned = await evaluate(`
+    return { baked: !!document.getElementById('bakedGraph'),
+             src: document.getElementById('srcName').textContent,
+             open: !!document.getElementById('fileBtn'),
+             save: !!document.getElementById('saveBtn') };`);
+  check(pinned.baked ? "a baked graph is the only one, and the page hands it back"
+    : "with nothing baked in the page takes a graph and does not offer one",
+    pinned.baked ? pinned.save && !pinned.open : pinned.open && !pinned.save,
+    `${pinned.src}${pinned.baked ? ", baked in" : ""}`);
+
   /* --- select: click the body of a box --- */
   let at = await evaluate(locate("Numlib/Krylov,"));
   await clickAt(...at.body);
@@ -314,6 +328,23 @@ try {
     `${deep.wide}px vs ${deep.litWide}px`);
   check("shut boxes holding cone nodes stay lit", deep.shutLit > 0 && deep.dim > 0,
     `${deep.shutLit} lit shut boxes, ${deep.dim} dimmed`);
+
+  /* --- the link to the API docs, which a build has only if it was given a root ---
+     The declaration focused above is still the one in the pane, so this asks whether it
+     points at its own anchor on its own module's page. A build given no root must show
+     no link at all rather than one that goes nowhere. */
+  const docs = await evaluate(`
+    const m = document.querySelector('meta[name="docs-root"]');
+    const a = [...document.querySelectorAll('#exDetail a')]
+      .find(a => a.textContent.trim().startsWith('API docs'));
+    return { root: m && m.content, href: a && a.getAttribute('href') };`);
+  check(docs.root ? "a declaration links to its own anchor in the API docs"
+    : "a build given no docs root links nowhere",
+    docs.root
+      ? (docs.href || "").startsWith(docs.root + "/Numlib/")
+        && docs.href.endsWith(".html#CR.isMinResIterate")
+      : !docs.href,
+    docs.href || "no link");
 
   /* --- the panes resize by dragging the splitter between them --- */
   const gw = await evaluate("return document.getElementById('exSide').getBoundingClientRect().width");

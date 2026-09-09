@@ -7,7 +7,8 @@ rests on.
 
 Open `index.html` and drop a `graph.json` on it, or use the button, or paste the JSON, or point the
 page at one with `index.html?graph=graph.json`. Nothing is uploaded; a dropped file never leaves the
-browser.
+browser. A build can also bake a graph into the page, which makes it a page about that one graph
+rather than a page that takes any — see [what a build can bake in](#what-a-build-can-bake-in).
 
 ```
 lake build                            # the tracker reads oleans, so build first
@@ -57,8 +58,9 @@ Three panes fill the window. The **index** on the left is the plan's tree with a
 group and every declaration; picking a result opens the tree to it and puts it in the middle of the
 canvas. The **canvas** pans and zooms, from anywhere on it, boxes included. The **detail** on the
 right is the node itself: its state, its module, its doc comment, its source, and the declarations
-it rests on and that rest on it, each one a link to go there. Both side panes drag wider from the
-line beside them, double-click back to their old width, and fold away entirely.
+it rests on and that rest on it, each one a link to go there — and, where the build was told where
+the API documentation lives, a link out to the declaration's own entry in it. Both side panes drag
+wider from the line beside them, double-click back to their old width, and fold away entirely.
 
 Two ways to look. **Whole graph** draws the current expansion of the tree. **Neighbourhood** drops
 the tree and draws one declaration's cone at full detail — one, two, three steps, or the whole of
@@ -142,6 +144,7 @@ become markup. There is no `{@html}` anywhere, and a test asserts it.
 | `src/lib/canvas.js` | the SVG drawing, and the pointer and key handling on it |
 | `src/lib/state.svelte.js` | the state, and the few actions that change it |
 | `src/lib/util.js` | the colours, the formatting and the text measuring |
+| `src/lib/site.js` | what the build baked into the page: the graph, its download, the API docs |
 | `test/ui.mjs` | the page driven by real mouse input, in a headless browser |
 
 ```
@@ -153,9 +156,41 @@ npm test          # it builds its own browser and serves its own page
 
 `.github/workflows/pages.yml` builds the page on a push to `main` and publishes `dist/` to
 GitHub Pages, which is one file. Turn it on once at Settings → Pages → Source → GitHub Actions.
-Nothing is bundled with it: the deployed page is the drawing, and the graph is whatever the
-person opening it drops on the page. The workflow does not run `npm test`, which wants a
-browser and a graph to work on.
+Nothing is baked into that one: the deployed page is the drawing, and the graph is whatever the
+person opening it drops on it. The workflow does not run `npm test`, which wants a browser and a
+graph to work on.
+
+## What a build can bake in
+
+Two things, read from the environment, so that a project's own CI can publish this page pinned to
+the graph it has just exported:
+
+```
+TRACKER_GRAPH=graph.json TRACKER_DOCS=docs npm run build
+```
+
+**`TRACKER_GRAPH`** puts that graph in the page, as JSON in a `<script type="application/json">`
+rather than as a string in the script, so that it is read by `JSON.parse` rather than by the
+JavaScript parser. It is re-serialised on the way in, which costs it `tracker graph`'s indentation.
+
+What comes out is a page about that graph rather than a page that takes one, and it is the whole
+of the difference: the page opens on it, and every way of loading another — the button, the drop,
+the paste, `?graph=` — is gone, because on a published page they are ways of making it say
+something other than what it was published to say. In their place is the download of the graph it
+was built from, so that what the page is drawing is still a file you can have.
+
+**`TRACKER_DOCS`** is the root of a [doc-gen4](https://github.com/leanprover/doc-gen4) site,
+absolute or relative to wherever the page is published. The detail pane then links a declaration to
+its own anchor on its module's page — `<root>/Numlib/Krylov/CR.html#CR.isMinResIterate` — and a
+module to its page, since what the graph calls a group and a node id are exactly what doc-gen4
+names a page and an anchor by. It links only what the library actually has: a declaration that is
+still open is not in the docs, and neither is a module none of whose declarations are written yet.
+It needs `TRACKER_GRAPH`, and a build given it alone stops: it says where one project's
+declarations are written down, and a page that has not been given that project's graph has nothing
+to say it about.
+
+Both are visible in the built file, in `<head>` and at the end of `<body>`; a build given neither
+produces exactly the page it produced before.
 
 The test drives the built page with real pointer events rather than by calling handlers, because
 most of what this page does *is* pointer behaviour — a click that is not a drag, a drag that is not
