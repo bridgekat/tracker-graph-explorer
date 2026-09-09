@@ -5,7 +5,7 @@
      The colours here are the theme's own (gray-*, primary-*), which app.css defines as
      this project's palette, so nothing needs restyling one element at a time. -->
 <script>
-  import { Navbar, NavBrand, Button, ButtonGroup, Select, SplitPane, Pane } from "flowbite-svelte";
+  import { Navbar, NavBrand, Button, Select, SplitPane, Pane } from "flowbite-svelte";
   import ThemeProvider from "flowbite-svelte/ThemeProvider.svelte";
   import {
     SunOutline, MoonOutline, FolderOpenOutline,
@@ -106,15 +106,16 @@
   const LABEL = "text-[11px] tracking-wide text-gray-500 uppercase";
 </script>
 
-<!-- A row of Buttons in a ButtonGroup: Flowbite's own segmented control, so the
-     selected and unselected states are the theme's rather than something drawn here. -->
+<!-- Separate Buttons rather than a ButtonGroup: a grouped Button discards its own size
+     prop and is pinned to "sm", and the only way back to xs is overriding the vendor
+     styles. Ungrouped they take the size they are given. -->
 {#snippet segmented(options, current, pick, label)}
-  <ButtonGroup size="xs" aria-label={label}>
+  <div class="flex items-center gap-1" role="group" aria-label={label}>
     {#each options as [v, text]}
       <Button size="xs" color={current === v ? "primary" : "alternative"}
         aria-pressed={current === v} onclick={() => pick(v)}>{text}</Button>
     {/each}
-  </ButtonGroup>
+  </div>
 {/snippet}
 
 <svelte:window

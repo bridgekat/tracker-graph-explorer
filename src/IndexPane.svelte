@@ -1,10 +1,9 @@
-<!-- The index: a search over every group and declaration, the state and kind filters,
-     and the plan's tree. Picking anything here selects it and opens the canvas to it. -->
+<!-- The index: a search over every group and declaration, and the plan's tree.
+     Picking anything here selects it and opens the canvas to it. -->
 <script>
-  import { Search, Button, ButtonGroup } from "flowbite-svelte";
-  import { app, filtering, rebuild, select, toggleGroup } from "./lib/state.svelte.js";
+  import { Search } from "flowbite-svelte";
+  import { app, select, toggleGroup } from "./lib/state.svelte.js";
   import { STATE_LABEL, fmt, plural, hueBar } from "./lib/util.js";
-  import * as TD from "./lib/derive.js";
 
   const LIST_CAP = 400;
   let query = $state("");
@@ -14,13 +13,6 @@
     const v = e.currentTarget.value;
     timer = setTimeout(() => { query = v.trim(); }, 130);
   }
-
-  const keep = (d) => {
-    const dd = app.base.decl[d];
-    if (!app.states.has(dd.state)) return false;
-    if (!app.kinds.has(dd.kind)) return false;
-    return true;
-  };
 
   /* the tree, flattened to the rows that are actually open */
   const rows = $derived.by(() => {
@@ -33,7 +25,6 @@
       if (!app.open.has(gi)) return;
       if (t.kids.length) { t.kids.forEach(walk); return; }
       t.decls.forEach((d) => {
-        if (filtering() && !keep(d)) return;
         out.push({ kind: "decl", d: app.base.decl[d], level: t.level + 1 });
       });
     };
@@ -52,7 +43,6 @@
     const decls = [];
     for (let i = 0; i < app.base.decl.length; i++) {
       const d = app.base.decl[i];
-      if (filtering() && !keep(i)) continue;
       const p = d.id.toLowerCase().indexOf(q);
       if (p >= 0) decls.push({ d, rank: (d.label.toLowerCase().includes(q) ? 0 : 1) * 1000 + p });
     }
@@ -76,15 +66,6 @@
 
   const isSel = (t, i) => !!app.sel && app.sel.t === t && app.sel.i === i;
 
-  /* The chips: what is switched on is what the canvas draws. Emptying a row would
-     leave nothing to look at, so the last chip standing is disabled rather than
-     silently switching the whole row back on under the click. */
-  function toggle(set, v) {
-    if (set.has(v)) set.delete(v); else set.add(v);
-    rebuild({ anchor: app.sel });
-  }
-  const isLast = (set, v) => set.size === 1 && set.has(v);
-
   const ROW = "tw flex w-full cursor-pointer items-center gap-1.5 py-[3px] pe-2 text-left "
     + "text-xs hover:bg-gray-100 dark:hover:bg-gray-800";
   const DOT = "inline-block h-2 w-2 shrink-0 rounded-full";
@@ -97,36 +78,6 @@
       autocomplete="off" aria-label="Search a group or a declaration" oninput={onInput}
       class="py-1.5 text-xs" />
   </div>
-
-  {#if app.base}
-    {@const kinds = Object.keys(app.base.meta.kinds)}
-    <div id="exFilters" class="flex shrink-0 flex-wrap items-center gap-2 border-b
-      border-gray-200 p-2 dark:border-gray-800">
-      <ButtonGroup size="xs" aria-label="Filter by state">
-        {#each TD.STATES.filter((s) => app.base.meta.states[s] > 0) as s}
-          <Button size="xs" color={app.states.has(s) ? "primary" : "alternative"}
-            aria-pressed={app.states.has(s)} disabled={isLast(app.states, s)}
-            title={isLast(app.states, s) ? "The last state shown cannot be switched off" : ""}
-            onclick={() => toggle(app.states, s)}>
-            <i class="{DOT} me-1.5" style="background: var(--st-{s})"></i>
-            {STATE_LABEL[s]} {fmt(app.base.meta.states[s])}
-          </Button>
-        {/each}
-      </ButtonGroup>
-      {#if kinds.length > 1}
-        <ButtonGroup size="xs" aria-label="Filter by kind">
-          {#each kinds as k}
-            <Button size="xs" color={app.kinds.has(k) ? "primary" : "alternative"}
-              aria-pressed={app.kinds.has(k)} disabled={isLast(app.kinds, k)}
-              title={isLast(app.kinds, k) ? "The last kind shown cannot be switched off" : ""}
-              onclick={() => toggle(app.kinds, k)}>
-              {k}s {fmt(app.base.meta.kinds[k])}
-            </Button>
-          {/each}
-        </ButtonGroup>
-      {/if}
-    </div>
-  {/if}
 
   <div id="exIndexMeta" class="shrink-0 px-2 py-1.5 text-[10.5px] text-gray-500">{meta}</div>
 

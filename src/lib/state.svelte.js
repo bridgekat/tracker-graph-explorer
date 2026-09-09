@@ -18,8 +18,6 @@ export const app = $state({
   sel: null,
   mode: "tree", coneSeed: null, coneDir: "both", coneRadius: 2,
   colour: "area", edges: "red",
-  states: new SvelteSet(), stateCount: 0,
-  kinds: new SvelteSet(), kindCount: 0,
   query: "",
   stats: "", status: null, zoom: 1,
   tooBig: null,                   /* { boxes } waiting on a yes; the scene is held below */
@@ -31,19 +29,6 @@ let canvas = null;
 export function attachCanvas(c) {
   canvas = c;
   if (app.base) c.setBase(app.base);
-}
-
-/* ---------- the filter over declarations ---------- */
-/* A filter is on when some state or kind is switched off. Both are sets of what is
-   shown, never null, so the two chip rows behave the same way as each other. */
-export function filtering() {
-  return app.states.size !== app.stateCount || app.kinds.size !== app.kindCount;
-}
-function keepDecl(d) {
-  const dd = app.base.decl[d];
-  if (!app.states.has(dd.state)) return false;
-  if (!app.kinds.has(dd.kind)) return false;
-  return true;
 }
 
 /* ---------- expansion ---------- */
@@ -68,7 +53,7 @@ function revealGroup(gi, alsoItself) {
 /* ---------- building ---------- */
 function computeScene() {
   const opts = {
-    open: app.open, keep: filtering() ? keepDecl : null, measure, mode: app.mode,
+    open: app.open, measure, mode: app.mode,
   };
   if (app.mode === "cone" && app.coneSeed) {
     const s = app.coneSeed;
@@ -186,10 +171,6 @@ export function adopt(raw, label) {
   app.mode = "tree";
   app.coneSeed = null;
   app.tooBig = null;
-  app.states = new SvelteSet(TD.STATES.filter((s) => m.states[s] > 0));
-  app.stateCount = app.states.size;
-  app.kinds = new SvelteSet(Object.keys(m.kinds));
-  app.kindCount = app.kinds.size;
   canvas?.setBase(base);
   /* the areas: the picture of the project that fits on a screen */
   openToLevel(base.tree.length > 40 ? 1 : 2);

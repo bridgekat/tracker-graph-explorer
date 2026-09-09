@@ -20,34 +20,6 @@ const CHANNEL = 46;            /* the widest empty lane the compactor will leave
 /* ---------- what is visible ---------- */
 function build(B, o) {
   const nodes = [], owner = new Int32Array(B.decl.length).fill(-1);
-  const keep = o.keep || null;
-
-  /* counts restricted to what passes the filter, one pass up the ancestor chains */
-  let kept = null, keptProved = null, keptState = null;
-  if (keep) {
-    kept = new Int32Array(B.tree.length);
-    keptProved = new Int32Array(B.tree.length);
-    keptState = B.tree.map(() => null);
-    B.decl.forEach((d) => {
-      if (!keep(d.i)) return;
-      for (const g of d.path) {
-        kept[g]++;
-        if (d.state === "proved") keptProved[g]++;
-        const by = keptState[g] || (keptState[g] = {});
-        by[d.state] = (by[d.state] || 0) + 1;
-      }
-    });
-  }
-  const countOf = (gi) => (keep ? kept[gi] : B.tree[gi].sub);
-  const provedOf = (gi) => (keep ? keptProved[gi] : B.tree[gi].byState.proved);
-  const stateOf = (gi) => {
-    if (!keep) return B.tree[gi].state;
-    const by = keptState[gi] || {};
-    return TD.rollState({
-      proved: by.proved || 0, stated: by.stated || 0, open: by.open || 0,
-      axioms: by.axioms || 0, wrong: by.wrong || 0
-    });
-  };
 
   function add(n) { n.id = nodes.length; nodes.push(n); return n; }
 
@@ -64,16 +36,16 @@ function build(B, o) {
   }
 
   function groupNode(gi, parent) {
-    const t = B.tree[gi], total = countOf(gi);
+    const t = B.tree[gi], total = t.sub;
     if (!total) return null;
     const n = add({
       kind: "group", gi, parent, children: null, expanded: false,
       label: t.label, name: t.name, short: t.short, sort: t.name,
-      count: total, proved: provedOf(gi), state: stateOf(gi),
+      count: total, proved: t.byState.proved, state: t.state,
       hue: t.hue, tone: t.tone, isModule: t.isModule, ready: t.ready, done: t.done
     });
     if (!o.open.has(gi)) {
-      for (const d of t.subDecls) if (!keep || keep(d)) owner[d] = n.id;
+      for (const d of t.subDecls) owner[d] = n.id;
       return n;
     }
     n.expanded = true;
@@ -81,7 +53,7 @@ function build(B, o) {
     if (t.kids.length) {
       t.kids.forEach((k) => { const c = groupNode(k, n); if (c) kids.push(c); });
     } else {
-      t.decls.forEach((d) => { if (!keep || keep(d)) kids.push(declNode(d, n)); });
+      t.decls.forEach((d) => { kids.push(declNode(d, n)); });
     }
     if (!kids.length) { n.expanded = false; return n; }
     n.children = kids;
@@ -94,7 +66,7 @@ function build(B, o) {
   });
   if (o.mode === "cone" && o.coneSet) {
     const list = [];
-    o.coneSet.forEach((d) => { if (!keep || keep(d) || (o.seeds && o.seeds.includes(d))) list.push(d); });
+    o.coneSet.forEach((d) => list.push(d));
     list.sort((a, b) => (B.decl[a].id < B.decl[b].id ? -1 : 1));
     root.children = list.map((d) => declNode(d, root));
   } else {

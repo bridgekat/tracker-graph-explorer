@@ -300,39 +300,10 @@ try {
     prog.ph === prog.h && prog.py === 0 && prog.clip && /rgba\(0, 0, 0/.test(prog.fill) && prog.pw < prog.bw,
     `${prog.pw.toFixed(1)}/${prog.bw} wide, ${prog.ph}/${prog.h} tall, ${prog.fill}`);
 
-  /* --- a filter chip says what it does, and cannot empty its own row ---
-     The kind chips used to hold their set in a plain Set inside $state, which Svelte
-     does not proxy, so the button kept reading pressed after it had been switched
-     back on; and switching the last one off silently switched the whole row on. */
-  const chip = (t) =>
-    "[...document.querySelectorAll('#exFilters button')].find(b => /" + t + "/.test(b.textContent))";
-  const kindState = async () => await evaluate(
-    "const b = " + chip("theorems") + "; return b.getAttribute('aria-pressed');");
-  await evaluate(chip("theorems") + ".click(); await new Promise(r=>setTimeout(r,260)); return 1;");
-  const offK = await kindState();
-  await evaluate(chip("theorems") + ".click(); await new Promise(r=>setTimeout(r,260)); return 1;");
-  const onK = await kindState();
-  check("a filter chip reports its own state", offK === "false" && onK === "true",
-    `off=${offK} then on=${onK}`);
-
-  const lastOne = await evaluate(`
-    const on = [...document.querySelectorAll('#exFilters button')]
-      .filter(b => /proved|open|stated|axioms|wrong/.test(b.textContent));
-    for (const b of on) { if (!b.disabled) { b.click(); await new Promise(r=>setTimeout(r,240)); } }
-    const left = on.filter(b => b.getAttribute('aria-pressed') === 'true');
-    return { left: left.length, disabled: left.every(b => b.disabled) };`);
-  check("the last state chip cannot be switched off",
-    lastOne.left === 1 && lastOne.disabled, `${lastOne.left} left on, disabled=${lastOne.disabled}`);
-
   /* --- the first draw past the too-big warning has its edges ---
      The pending scene used to be parked in $state, which deep-proxied every node in
      it; the canvas then wrote its edge layers onto one identity and the edge records
      read another, so that first draw came out with nodes and no edges at all. */
-  await evaluate(`
-    [...document.querySelectorAll('#exFilters button')].forEach(b => {
-      if (b.getAttribute('aria-pressed') === 'false') b.click();
-    });
-    await new Promise(r => setTimeout(r, 400)); return 1;`);
   const past = await evaluate(`
     const hit = (t) => [...document.querySelectorAll('button')]
       .find(b => b.textContent.trim() === t);
