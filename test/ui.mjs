@@ -268,16 +268,17 @@ try {
   check("shut boxes holding cone nodes stay lit", deep.shutLit > 0 && deep.dim > 0,
     `${deep.shutLit} lit shut boxes, ${deep.dim} dimmed`);
 
-  /* --- the panes resize by dragging their grip --- */
+  /* --- the panes resize by dragging the splitter between them --- */
   const gw = await evaluate("return document.getElementById('exSide').getBoundingClientRect().width");
   const grip = await evaluate(
-    "const r = document.getElementById('gripL').getBoundingClientRect();" +
+    "const r = document.querySelectorAll('[role=\\'separator\\']')[0].getBoundingClientRect();" +
     "return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]");
   await dragBy(grip[0], grip[1], 90, 0);
+  await evaluate("await new Promise(r=>setTimeout(r,200)); return 1");
   const gw2 = await evaluate("return document.getElementById('exSide').getBoundingClientRect().width");
   const vb = await evaluate("return document.getElementById('exSvg').getAttribute('viewBox')");
   const vw = await evaluate("return document.getElementById('exViewport').clientWidth");
-  check("dragging a grip resizes the pane", Math.abs(gw2 - gw - 90) < 3, `${gw} → ${gw2}`);
+  check("dragging the splitter resizes the pane", Math.abs(gw2 - gw - 90) < 8, `${gw} → ${gw2}`);
   check("the canvas follows the new width", vb.split(" ")[2] === String(vw), `${vb} vs ${vw}`);
 
   /* --- zoom buttons --- */

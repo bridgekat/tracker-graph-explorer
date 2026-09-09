@@ -20,10 +20,12 @@ export const css = (n) => getComputedStyle(document.documentElement).getProperty
 export const plural = (n, one, many) => `${fmt(n)} ${n === 1 ? one : (many || one + "s")}`;
 
 /* ---------- colour ---------- */
+/* One signal for the whole page: main.js resolves the system preference to this
+   class before mounting, and the theme button owns it after that. The drawing samples
+   the tokens rather than inheriting them, so it has to ask the same question the CSS
+   does — reading the media query here is what left the graph in light colours. */
 function isDark() {
-  const t = document.documentElement.getAttribute("data-theme");
-  if (t) return t === "dark";
-  return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  return document.documentElement.classList.contains("dark");
 }
 /* A hue from the tree turned into the fill and the stroke of a node. `tone` is the
    second channel: neighbours in one family sit a few degrees apart, which is not

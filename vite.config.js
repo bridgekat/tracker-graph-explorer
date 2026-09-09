@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import tailwindcss from "@tailwindcss/vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 /* One file is the point: the page has to open from file://, take a graph.json dropped
@@ -7,7 +8,7 @@ import { viteSingleFile } from "vite-plugin-singlefile";
    build-time dependencies; what ships is still index.html and nothing else. */
 export default defineConfig({
   root: "src",
-  plugins: [svelte(), viteSingleFile()],
+  plugins: [tailwindcss(), svelte(), viteSingleFile()],
   build: {
     outDir: "../dist",
     emptyOutDir: true,

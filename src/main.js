@@ -3,6 +3,12 @@ import { mount } from "svelte";
 import App from "./App.svelte";
 import { app, readText } from "./lib/state.svelte.js";
 
+/* The system preference is resolved to a class once, before anything mounts, so the
+   tokens, Tailwind's dark variant and the canvas all read the same single signal.
+   After this the theme button owns the class. */
+if (matchMedia("(prefers-color-scheme: dark)").matches)
+  document.documentElement.classList.add("dark");
+
 mount(App, { target: document.getElementById("app") });
 
 /* A graph named in the query string, so the page can be published beside one:

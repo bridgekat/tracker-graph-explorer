@@ -1,6 +1,7 @@
 <!-- The index: a search over every group and declaration, the state and kind filters,
      and the plan's tree. Picking anything here selects it and opens the canvas to it. -->
 <script>
+  import { Search, Button, ButtonGroup } from "flowbite-svelte";
   import { app, filtering, rebuild, select, toggleGroup } from "./lib/state.svelte.js";
   import { STATE_LABEL, fmt, plural, hueBar } from "./lib/util.js";
   import * as TD from "./lib/derive.js";
@@ -89,92 +90,110 @@
     app.kinds = liveKinds.size === all.length ? null : new Set(liveKinds);
     rebuild({ anchor: app.sel });
   }
-  const kindOn = (k, all) => !liveKinds || liveKinds.has(k);
+  const kindOn = (k) => !liveKinds || liveKinds.has(k);
+
+  const ROW = "tw flex w-full cursor-pointer items-center gap-1.5 py-[3px] pe-2 text-left "
+    + "text-xs hover:bg-gray-100 dark:hover:bg-gray-800";
+  const DOT = "inline-block h-2 w-2 shrink-0 rounded-full";
+  const SEL = "bg-gray-100 dark:bg-gray-800";
 </script>
 
-<div class="ex-pane-b">
-  <input id="exSearch" type="search" placeholder="Search a group or a declaration"
-    autocomplete="off" aria-label="Search a group or a declaration" oninput={onInput} />
-
-  <div class="ex-filters" id="exFilters" role="group" aria-label="Filter by state and kind">
-    {#if app.base}
-      {#each TD.STATES.filter((s) => app.base.meta.states[s] > 0) as s}
-        <button class="fchip" aria-pressed={app.states.has(s)} onclick={() => toggleState(s)}>
-          <i class="sdot" style="background: var(--st-{s})"></i>
-          {STATE_LABEL[s]} {fmt(app.base.meta.states[s])}
-        </button>
-      {/each}
-      {@const kinds = Object.keys(app.base.meta.kinds)}
-      {#if kinds.length > 1}
-        <span class="fsep"></span>
-        {#each kinds as k}
-          <button class="fchip" aria-pressed={kindOn(k, kinds)} onclick={() => toggleKind(k, kinds)}>
-            <i class="sdot" style="background: var(--ink3)"></i>
-            {k}s {fmt(app.base.meta.kinds[k])}
-          </button>
-        {/each}
-      {/if}
-    {/if}
+<div class="flex min-h-0 flex-1 flex-col">
+  <div class="shrink-0 border-b border-gray-200 dark:border-gray-800 p-2">
+    <Search id="exSearch" size="sm" placeholder="Search a group or a declaration"
+      autocomplete="off" aria-label="Search a group or a declaration" oninput={onInput}
+      class="py-1.5 text-xs" />
   </div>
 
-  <div class="ex-meta" id="exIndexMeta">{meta}</div>
+  {#if app.base}
+    {@const kinds = Object.keys(app.base.meta.kinds)}
+    <div id="exFilters" class="flex shrink-0 flex-wrap items-center gap-2 border-b
+      border-gray-200 p-2 dark:border-gray-800">
+      <ButtonGroup size="xs" aria-label="Filter by state">
+        {#each TD.STATES.filter((s) => app.base.meta.states[s] > 0) as s}
+          <Button size="xs" color={app.states.has(s) ? "primary" : "alternative"}
+            aria-pressed={app.states.has(s)} onclick={() => toggleState(s)}>
+            <i class="{DOT} me-1.5" style="background: var(--st-{s})"></i>
+            {STATE_LABEL[s]} {fmt(app.base.meta.states[s])}
+          </Button>
+        {/each}
+      </ButtonGroup>
+      {#if kinds.length > 1}
+        <ButtonGroup size="xs" aria-label="Filter by kind">
+          {#each kinds as k}
+            <Button size="xs" color={kindOn(k) ? "primary" : "alternative"}
+              aria-pressed={kindOn(k)} onclick={() => toggleKind(k, kinds)}>
+              {k}s {fmt(app.base.meta.kinds[k])}
+            </Button>
+          {/each}
+        </ButtonGroup>
+      {/if}
+    </div>
+  {/if}
 
-  <div class="ex-tree" id="exTree">
+  <div id="exIndexMeta" class="shrink-0 px-2 py-1.5 text-[10.5px] text-gray-500">{meta}</div>
+
+  <div id="exTree" class="min-h-0 flex-1 overflow-y-auto pb-2">
     {#if hits}
       {#each hits.shown as row}
         {#if row.kind === "group"}
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div class="tw" onclick={() => select({ t: 0, i: row.t.i }, true)}
-            role="button" tabindex="-1" onkeydown={() => {}}>
-            <i class="sdot" style="background: var(--st-{row.t.state})" title={STATE_LABEL[row.t.state]}></i>
-            <span class="tw-nm">{row.t.short}</span>
-            <span class="tw-k">group</span>
-          </div>
+          <button class={ROW} style="padding-left: 5px" onclick={() => select({ t: 0, i: row.t.i }, true)}>
+            <i class={DOT} style="background: var(--st-{row.t.state})" title={STATE_LABEL[row.t.state]}></i>
+            <span class="truncate">{row.t.short}</span>
+            <span class="ms-auto shrink-0 text-[10px] text-gray-500">group</span>
+          </button>
         {:else}
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div class="tw" onclick={() => select({ t: 1, i: row.d.i }, true)}
-            role="button" tabindex="-1" onkeydown={() => {}}>
-            <i class="sdot" style="background: var(--st-{row.d.state})" title={STATE_LABEL[row.d.state]}></i>
-            <span class="tw-nm mono" title={row.d.id}>{row.d.id}</span>
-          </div>
+          <button class={ROW} style="padding-left: 5px" onclick={() => select({ t: 1, i: row.d.i }, true)}>
+            <i class={DOT} style="background: var(--st-{row.d.state})" title={STATE_LABEL[row.d.state]}></i>
+            <span class="truncate font-mono" title={row.d.id}>{row.d.id}</span>
+          </button>
         {/if}
       {/each}
       {#if !hits.total}
-        <div class="tw-none">Nothing matches “{query}”.</div>
+        <div class="p-3 text-xs text-gray-500">Nothing matches “{query}”.</div>
       {/if}
     {:else}
       {#each rows as row (row.kind === "group" ? "g" + row.t.i : "d" + row.d.i)}
         {#if row.kind === "group"}
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div class="tw" class:on={isSel(0, row.t.i)} style="padding-left: {5 + row.t.level * 13}px"
-            onclick={() => select({ t: 0, i: row.t.i }, true)} role="button" tabindex="-1" onkeydown={() => {}}>
-            <button class="tw-car" class:open={app.open.has(row.t.i)}
+          <div class="{ROW} {isSel(0, row.t.i) ? 'bg-gray-100 dark:bg-gray-800' : ''}"
+            style="padding-left: {5 + row.t.level * 13}px"
+            role="button" tabindex="-1" onkeydown={() => {}}
+            onclick={() => select({ t: 0, i: row.t.i }, true)}>
+            <button class="shrink-0 rounded p-0.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800
+                           hover:text-gray-950 dark:text-white"
               aria-expanded={app.open.has(row.t.i)}
               aria-label={(app.open.has(row.t.i) ? "Collapse " : "Expand ") + row.t.name}
               onclick={(e) => { e.stopPropagation(); toggleGroup(row.t.i); }}>
-              <svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true">
+              <svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true"
+                class="transition-transform {app.open.has(row.t.i) ? 'rotate-90' : ''}">
                 <path d="M3 1.5 6.2 4.5 3 7.5" fill="none" stroke="currentColor"
                   stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
             </button>
-            <i class="sdot" style="background: var(--st-{row.t.state})" title={STATE_LABEL[row.t.state]}></i>
-            <span class="tw-nm" title={row.t.name}>{row.t.label}</span>
-            {#if row.t.ready && !row.t.done}<span class="tw-tagr">ready</span>{/if}
-            <span class="tw-n">{fmt(row.t.sub)}</span>
-            <span class="tw-bar" title="{fmt(row.t.byState.proved)} of {fmt(row.t.sub)} proved">
-              <i style="width: {(row.t.sub ? row.t.byState.proved / row.t.sub * 100 : 0).toFixed(1)}%;
-                        background: {hueBar(row.t.hue, row.t.tone)}"></i>
+            <i class={DOT} style="background: var(--st-{row.t.state})" title={STATE_LABEL[row.t.state]}></i>
+            <span class="truncate" title={row.t.name}>{row.t.label}</span>
+            {#if row.t.ready && !row.t.done}
+              <span class="shrink-0 rounded-sm bg-gray-100 dark:bg-gray-800 px-1 text-[9.5px]
+                           text-gray-500 uppercase">ready</span>
+            {/if}
+            <span class="ms-auto shrink-0 font-mono text-[10px] tabular-nums text-gray-500"
+              >{fmt(row.t.sub)}</span>
+            <span class="h-1 w-9 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800"
+              title="{fmt(row.t.byState.proved)} of {fmt(row.t.sub)} proved">
+              <i class="block h-full"
+                style="width: {(row.t.sub ? row.t.byState.proved / row.t.sub * 100 : 0).toFixed(1)}%;
+                       background: {hueBar(row.t.hue, row.t.tone)}"></i>
             </span>
           </div>
         {:else}
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div class="tw tw-d" class:on={isSel(1, row.d.i)}
+          <button class="{ROW} {isSel(1, row.d.i) ? 'bg-gray-100 dark:bg-gray-800' : ''}"
             style="padding-left: {5 + row.level * 13 + 15}px"
-            onclick={() => select({ t: 1, i: row.d.i }, true)} role="button" tabindex="-1" onkeydown={() => {}}>
-            <i class="sdot" style="background: var(--st-{row.d.state})" title={STATE_LABEL[row.d.state]}></i>
-            <span class="tw-nm mono" title={row.d.id}>{row.d.label}</span>
-            <span class="tw-k">{row.d.kind === "definition" ? "def" : "thm"}</span>
-          </div>
+            onclick={() => select({ t: 1, i: row.d.i }, true)}>
+            <i class={DOT} style="background: var(--st-{row.d.state})" title={STATE_LABEL[row.d.state]}></i>
+            <span class="truncate font-mono" title={row.d.id}>{row.d.label}</span>
+            <span class="ms-auto shrink-0 text-[10px] text-gray-500"
+              >{row.d.kind === "definition" ? "def" : "thm"}</span>
+          </button>
         {/if}
       {/each}
     {/if}

@@ -1,0 +1,116 @@
+/* A Lean doc comment, rendered from marked's tokens by Prose.svelte. Kept out of
+   Tailwind's way: the typography plugin claims .prose, and this is not it. */
+.prose p {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink2);
+  margin: 0 0 8px
+}
+
+.prose p:last-child {
+  margin-bottom: 0
+}
+
+.prose code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--wash);
+  border-radius: 2px;
+  padding: 0 3px;
+  overflow-wrap: anywhere
+}
+
+.prose b {
+  color: var(--ink);
+  font-weight: 600
+}
+
+.prose .ph {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 12px;
+  margin-top: 12px
+}
+
+.prose .ph:first-child {
+  margin-top: 0
+}
+
+.prose ul {
+  margin: 0 0 8px;
+  padding-left: 17px
+}
+
+.prose li {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink2);
+  margin-bottom: 3px
+}
+
+.prose ol {
+  margin: 0 0 8px;
+  padding-left: 19px
+}
+
+.prose pre {
+  margin: 0 0 8px;
+  padding: 7px 9px;
+  background: var(--wash);
+  border-radius: 3px;
+  overflow-x: auto
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre
+}
+
+.prose blockquote {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--rule)
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 12px 0
+}
+
+.prose table {
+  border-collapse: collapse;
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  display: block;
+  overflow-x: auto
+}
+
+.prose th,
+.prose td {
+  border: 1px solid var(--rule);
+  padding: 3px 7px;
+  text-align: left;
+  color: var(--ink2);
+  vertical-align: top
+}
+
+.prose th {
+  color: var(--ink);
+  font-weight: 600;
+  background: var(--wash)
+}
+
+/* a module path is one word: let the table scroll rather than break it in half */
+.prose td code,
+.prose th code {
+  overflow-wrap: normal;
+  white-space: nowrap
+}
+
+.prose s {
+  color: var(--ink3)
+}

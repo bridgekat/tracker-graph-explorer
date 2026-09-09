@@ -1,0 +1,236 @@
+/* The drawing. None of this is component markup: lib/canvas.js builds the <svg> and
+   sets these classes on it, so these rules are the whole of how the graph looks. */
+.ex-viewport {
+  position: relative;
+  user-select: none;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--sunken)
+}
+
+.ex-viewport:focus-visible {
+  outline: 2px solid var(--s1);
+  outline-offset: -2px
+}
+
+#exSvg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none
+}
+
+#exSvg.grabbing {
+  cursor: grabbing
+}
+
+/* ---- the drawing ---- */
+.ex-edge {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.2
+}
+
+.ex-edge.back {
+  stroke-dasharray: 5 4
+}
+
+.ex-edge.extra {
+  stroke: var(--edgefaint)
+}
+
+#exSvg.only-essential .ex-edge.extra {
+  display: none
+}
+
+.ex-cbg {
+  stroke-width: 1
+}
+
+.ex-chead {
+  fill: var(--ink2);
+  font: 600 10.5px var(--sans);
+  pointer-events: none
+}
+
+.ex-cnum {
+  fill: var(--ink3);
+  font: 400 9.5px var(--mono);
+  pointer-events: none
+}
+
+.ex-box {
+  stroke-width: 1.1
+}
+
+.ex-node {
+  cursor: pointer
+}
+
+.ex-node.hover > .ex-box,
+.ex-node.hover > .ex-cbg {
+  stroke-width: 2.2
+}
+
+.ex-lab {
+  font: 400 11px var(--mono);
+  fill: var(--ink);
+  pointer-events: none
+}
+
+.ex-node.grp > .ex-lab {
+  font: 600 11px var(--sans)
+}
+
+.ex-num {
+  font: 400 9.5px var(--mono);
+  fill: var(--ink3);
+  pointer-events: none
+}
+
+.ex-prog {
+  pointer-events: none
+}
+
+.ex-tog {
+  fill: transparent;
+  stroke: none
+}
+
+.ex-togi {
+  stroke: var(--ink3);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  fill: none;
+  pointer-events: none
+}
+
+.ex-toggle:hover .ex-tog {
+  fill: var(--wash)
+}
+
+.ex-toggle:hover .ex-togi {
+  stroke: var(--ink)
+}
+
+.ex-node.sel > .ex-box,
+.ex-node.sel > .ex-cbg {
+  stroke: var(--ink);
+  stroke-width: 2.4
+}
+
+#exSvg.focused .dim {
+  opacity: .17
+}
+
+#exSvg.focused .ex-edge {
+  opacity: .08
+}
+
+#exSvg.focused .ex-edge.lit-down {
+  opacity: .72;
+  stroke: var(--ink)
+}
+
+#exSvg.focused .ex-edge.lit-up {
+  opacity: .42;
+  stroke: var(--ink)
+}
+
+/* the focused box own lines: the heaviest thing on the canvas, so that dashed can
+   go on meaning one thing only — an edge the layering had to reverse */
+#exSvg.focused .ex-edge.lit-direct {
+  opacity: 1;
+  stroke: var(--ink);
+  stroke-width: 2.2
+}
+
+#exSvg.far .ex-lab,
+#exSvg.far .ex-num,
+#exSvg.far .ex-togi,
+#exSvg.far .ex-cnum {
+  display: none
+}
+
+body.dragging .ex-viewport {
+  outline: 2px dashed var(--s1);
+  outline-offset: -6px
+}
+
+/* the tooltip the canvas raises, positioned by App.svelte */
+/* ---- the tooltip ---- */
+#tip {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0;
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: 3px;
+  padding: 7px 9px;
+  box-shadow: 0 5px 22px rgba(0, 0, 0, .13);
+  max-width: 330px
+}
+
+#tip.on {
+  opacity: 1
+}
+
+#tip .tr {
+  font-size: 11px;
+  color: var(--ink2);
+  display: flex;
+  align-items: center;
+  gap: 6px
+}
+
+#tip .tm {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink);
+  margin-bottom: 2px;
+  overflow-wrap: anywhere
+}
+
+#tip .tk {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none
+}
+
+@media (max-width: 1100px) {
+
+  .ex-side,
+  .ex-aside {
+    position: absolute;
+    top: 0;
+    z-index: 4;
+    height: 100%;
+    box-shadow: 0 6px 30px rgba(0, 0, 0, .2)
+  }
+
+  .ex-side {
+    left: 0;
+    border-right: 1px solid var(--rule)
+  }
+
+  .ex-aside {
+    right: 0;
+    border-left: 1px solid var(--rule)
+  }
+
+  .ex-grip {
+    display: none
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important
+  }
+}

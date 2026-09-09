@@ -1,10 +1,19 @@
-<!-- The window: a bar, three panes and a status strip. Everything that decides what is
-     drawn lives in state.svelte.js; the canvas is handed a scene and left to draw it. -->
+<!-- The window: a navbar, a toolbar, three resizable panes and a status strip. The
+     chrome is Flowbite; the canvas inside the middle pane is not — see lib/canvas.js.
+     Everything that decides what is drawn lives in state.svelte.js.
+
+     The colours here are the theme's own (gray-*, primary-*), which app.css defines as
+     this project's palette, so nothing needs restyling one element at a time. -->
 <script>
+  import { Navbar, NavBrand, Button, ButtonGroup, Select, SplitPane, Pane } from "flowbite-svelte";
+  import ThemeProvider from "flowbite-svelte/ThemeProvider.svelte";
+  import {
+    SunOutline, MoonOutline, FolderOpenOutline,
+    ZoomInOutline, ZoomOutOutline, ExpandOutline,
+  } from "flowbite-svelte-icons";
   import IndexPane from "./IndexPane.svelte";
   import DetailPane from "./DetailPane.svelte";
   import Canvas from "./Canvas.svelte";
-  import Grip from "./Grip.svelte";
   import {
     app, readText, openAllGroups, openEverything,
     openToLevel, rebuild, repaintTheme, setColour, setEdges, setMode,
@@ -12,23 +21,22 @@
   import { STATE_LABEL, fmt, hueLine } from "./lib/util.js";
   import * as TD from "./lib/derive.js";
 
-  let sideW = $state(272), asideW = $state(352);
-  let sideOpen = $state(true), asideOpen = $state(true);
   let dragging = $state(false);
-  let fileInput;
+  let fileInput = $state(null);
   let canvas = $state(null);
+  let dark = $state(document.documentElement.classList.contains("dark"));
 
-  const THEMES = ["system", "light", "dark"];
-  let themeIdx = $state(0);
-  function cycleTheme() {
-    themeIdx = (themeIdx + 1) % THEMES.length;
-    const t = THEMES[themeIdx];
-    if (t === "system") document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", t);
+  function toggleTheme() {
+    dark = !dark;
+    document.documentElement.classList.toggle("dark", dark);
+    /* the drawing samples the tokens rather than inheriting them, so it has to be told */
     repaintTheme();
   }
 
+  const LEVELS = [["areas", "Areas"], ["sub", "Sub-areas"], ["modules", "Modules"], ["all", "Declarations"]];
+  let level = $state("sub");
   function openTo(v) {
+    level = v;
     if (app.mode !== "tree") app.mode = "tree";
     if (v === "areas") openToLevel(1);
     else if (v === "modules") openAllGroups();
@@ -85,148 +93,173 @@
   });
 
   const statusNode = $derived(app.status?.node);
+
+  /* Component defaults that have no dark variant of their own. Set here, once, rather
+     than overridden at each use: SplitPane's divider is a flat bg-gray-300, which is a
+     bright band across a dark page, and its drag colour is Tailwind's blue rather than
+     this project's primary. */
+  const THEME = {
+    divider: "bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 "
+      + "focus:outline-primary-500",
+  };
+  const BAR = "shrink-0 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900";
+  const LABEL = "text-[11px] tracking-wide text-gray-500 uppercase";
 </script>
+
+<!-- A row of Buttons in a ButtonGroup: Flowbite's own segmented control, so the
+     selected and unselected states are the theme's rather than something drawn here. -->
+{#snippet segmented(options, current, pick, label)}
+  <ButtonGroup size="xs" aria-label={label}>
+    {#each options as [v, text]}
+      <Button size="xs" color={current === v ? "primary" : "alternative"}
+        aria-pressed={current === v} onclick={() => pick(v)}>{text}</Button>
+    {/each}
+  </ButtonGroup>
+{/snippet}
 
 <svelte:window
   ondragover={(e) => { e.preventDefault(); dragging = true; }}
   ondragleave={(e) => { if (e.relatedTarget === null) dragging = false; }}
   ondrop={onDrop} />
 
-<div class="app" class:dragging>
-  <header class="bar">
-    <span class="brand">tracker <b>graph</b></span>
-    <div class="src-now">
-      <span class="src-name" id="srcName">{app.src || "no graph loaded"}</span>
-      <span class="src-sub" id="srcSub">{app.srcSub}</span>
+<ThemeProvider theme={THEME}>
+<div class="flex h-full flex-col" class:dragging>
+  <Navbar class="{BAR} px-3 py-2">
+    <NavBrand href="##" class="gap-2">
+      <span class="font-mono text-sm text-gray-700 dark:text-gray-300">
+        tracker <b class="text-gray-950 dark:text-white">graph</b>
+      </span>
+    </NavBrand>
+    <div class="flex min-w-0 flex-1 items-baseline gap-2 px-4">
+      <span id="srcName" class="truncate font-mono text-xs text-gray-950 dark:text-white"
+        >{app.src || "no graph loaded"}</span>
+      <span id="srcSub" class="hidden truncate text-xs text-gray-500 sm:inline">{app.srcSub}</span>
     </div>
-    <div class="right">
-      <button id="fileBtn" onclick={() => fileInput.click()}>Open graph JSON</button>
-      <button id="themeBtn" onclick={cycleTheme}>Theme: {THEMES[themeIdx]}</button>
+    <div class="flex shrink-0 items-center gap-2">
+      <Button id="fileBtn" size="xs" color="alternative" onclick={() => fileInput.click()}>
+        <FolderOpenOutline class="me-1.5 h-4 w-4" />Open graph JSON
+      </Button>
+      <Button id="themeBtn" size="xs" color="alternative" aria-label="Switch theme" onclick={toggleTheme}>
+        {#if dark}<SunOutline class="h-4 w-4" />{:else}<MoonOutline class="h-4 w-4" />{/if}
+      </Button>
     </div>
     <input type="file" id="fileInput" accept=".json,application/json" hidden
       bind:this={fileInput} onchange={onFile} />
-  </header>
+  </Navbar>
 
-  <div class="panes">
-    <aside class="ex-side" id="exSide" class:collapsed={!sideOpen}
-      style="width: {sideOpen ? sideW + 'px' : ''}" aria-label="Index of groups and declarations">
-      <div class="ex-pane-h">
-        <span class="ex-pane-t">Index</span>
-        <button class="ex-icon" id="exSideBtn" aria-expanded={sideOpen}
-          title="Collapse the index" onclick={() => (sideOpen = !sideOpen)}>‹</button>
+  <div class="{BAR} flex flex-wrap items-center gap-x-4 gap-y-2 overflow-x-auto px-3 py-1.5">
+    <div class="flex shrink-0 items-center gap-2">
+      <span class={LABEL}>Open to</span>
+      {@render segmented(LEVELS, level, openTo, "How far to open the tree")}
+    </div>
+
+    <div class="flex shrink-0 items-center gap-2">
+      {@render segmented([["tree", "Whole graph"], ["cone", "Neighbourhood"]],
+        app.mode, setMode, "What the graph shows")}
+    </div>
+
+    {#if app.mode === "cone"}
+      <div id="exConeCtl" class="flex shrink-0 items-center gap-2">
+        <Select id="exConeDir" size="sm" class="w-40 py-1 text-xs"
+          aria-label="Which way the neighbourhood runs"
+          bind:value={app.coneDir} onchange={() => rebuild()}
+          items={[{ value: "both", name: "both ways" },
+                  { value: "down", name: "what it rests on" },
+                  { value: "up", name: "what rests on it" }]} />
+        <Select id="exConeR" size="sm" class="w-36 py-1 text-xs"
+          aria-label="How far the neighbourhood reaches"
+          bind:value={app.coneRadius} onchange={() => rebuild()}
+          items={[{ value: 1, name: "1 step" }, { value: 2, name: "2 steps" },
+                  { value: 3, name: "3 steps" }, { value: -1, name: "the whole cone" }]} />
       </div>
-      {#if sideOpen}<IndexPane />{/if}
-    </aside>
+    {/if}
 
-    <Grip id="gripL" hidden={!sideOpen} label="Resize the index pane"
-      width={sideW} dir={1} onresize={(w) => (sideW = w)} />
+    <div class="flex shrink-0 items-center gap-2">
+      <span class={LABEL}>Colour</span>
+      {@render segmented([["area", "Area"], ["progress", "Progress"], ["kind", "Kind"]],
+        app.colour, setColour, "Colour dimension")}
+    </div>
 
-    <main class="stage">
-      <div class="stage-bar">
-        <span class="flab">Open to</span>
-        <div class="fopts" role="group" aria-label="How far to open the tree">
-          <button data-exlevel="areas" onclick={() => openTo("areas")}>Areas</button>
-          <button data-exlevel="sub" onclick={() => openTo("sub")}>Sub-areas</button>
-          <button data-exlevel="modules" onclick={() => openTo("modules")}>Modules</button>
-          <button data-exlevel="all" onclick={() => openTo("all")}>Declarations</button>
-        </div>
-        <span class="gap"></span>
-        <div class="fopts" role="group" aria-label="What the graph shows">
-          <button data-exmode="tree" aria-pressed={app.mode === "tree"}
-            onclick={() => setMode("tree")}>Whole graph</button>
-          <button data-exmode="cone" aria-pressed={app.mode === "cone"}
-            onclick={() => setMode("cone")}>Neighbourhood</button>
-        </div>
-        {#if app.mode === "cone"}
-          <span class="ex-cone" id="exConeCtl">
-            <select id="exConeDir" aria-label="Which way the neighbourhood runs"
-              bind:value={app.coneDir} onchange={() => rebuild()}>
-              <option value="both">both ways</option>
-              <option value="down">what it rests on</option>
-              <option value="up">what rests on it</option>
-            </select>
-            <select id="exConeR" aria-label="How far the neighbourhood reaches"
-              bind:value={app.coneRadius} onchange={() => rebuild()}>
-              <option value={1}>1 step</option>
-              <option value={2}>2 steps</option>
-              <option value={3}>3 steps</option>
-              <option value={-1}>the whole cone</option>
-            </select>
+    <div class="flex shrink-0 items-center gap-2">
+      <span class={LABEL}>Edges</span>
+      {@render segmented([["red", "Essential"], ["all", "All"]],
+        app.edges, setEdges, "Which edges to draw")}
+    </div>
+
+    <div class="ms-auto flex shrink-0 items-center gap-1">
+      <Button id="exZoomOut" size="xs" color="alternative" aria-label="Zoom out"
+        onclick={() => canvas?.zoomBy(1 / 1.3)}><ZoomOutOutline class="h-4 w-4" /></Button>
+      <span id="exZoomLab" class="w-11 text-center font-mono text-[11px] text-gray-500"
+        >{Math.round(app.zoom * 100)}%</span>
+      <Button id="exZoomIn" size="xs" color="alternative" aria-label="Zoom in"
+        onclick={() => canvas?.zoomBy(1.3)}><ZoomInOutline class="h-4 w-4" /></Button>
+      <Button id="exFit" size="xs" color="alternative" onclick={() => canvas?.fit()}>
+        <ExpandOutline class="me-1.5 h-4 w-4" />Fit
+      </Button>
+    </div>
+  </div>
+
+  <SplitPane class="min-h-0 flex-1" minSize={180} initialSizes={[21, 53, 26]} responsive={false}>
+    <Pane class="min-w-0 overflow-hidden">
+      <aside id="exSide" class="flex h-full flex-col bg-white dark:bg-gray-900"
+        aria-label="Index of groups and declarations">
+        <IndexPane />
+      </aside>
+    </Pane>
+
+    <Pane class="min-w-0 overflow-hidden">
+      <main class="flex h-full min-w-0 flex-col">
+        <Canvas bind:api={canvas} />
+      </main>
+    </Pane>
+
+    <Pane class="min-w-0 overflow-hidden">
+      <aside class="flex h-full flex-col bg-white dark:bg-gray-900" aria-label="The selected node">
+        {#if app.base}<DetailPane />{/if}
+      </aside>
+    </Pane>
+  </SplitPane>
+
+  <div class="flex shrink-0 items-center gap-4 overflow-x-auto border-t border-gray-200 bg-white
+              px-3 py-1.5 text-[11.5px] text-gray-700 dark:border-gray-800 dark:bg-gray-900
+              dark:text-gray-300">
+    <div id="exStatus" class="flex shrink-0 items-center gap-2 whitespace-nowrap">
+      {#if app.status?.warn}
+        <span class="text-orange-700 dark:text-orange-400">{app.status.warn}</span>
+      {:else if statusNode}
+        <span><b class="tabular-nums text-gray-950 dark:text-white">{fmt(app.status.below)}</b> it rests on</span>
+        <span><b class="tabular-nums text-gray-950 dark:text-white">{fmt(app.status.above)}</b> rest on it</span>
+        {#if statusNode.kind === "group"}
+          <span><b class="tabular-nums text-gray-950 dark:text-white">{fmt(statusNode.count)}</b> results inside</span>
+        {/if}
+      {:else}
+        <span class="text-gray-500">
+          {app.mode === "cone"
+            ? "The neighbourhood of one declaration. Double-click another to move it there."
+            : "Click a box to read it and to light what it touches. ＋ opens it."}
+        </span>
+      {/if}
+    </div>
+
+    <div id="exLegend" class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      {#each legend as item}
+        {#if item.muted}
+          <span class="text-gray-500">{item.muted}</span>
+        {:else}
+          <span class="flex items-center gap-1.5 whitespace-nowrap">
+            <i class="inline-block h-2.5 w-2.5 rounded-[2px]" style="background: {item.colour}"></i>
+            {#if item.family}<b class="text-gray-950 dark:text-white">{item.label}</b>{:else}{item.label}{/if}
           </span>
         {/if}
-        <span class="gap"></span>
-        <div class="fopts" role="group" aria-label="Colour dimension">
-          {#each [["area", "Area"], ["progress", "Progress"], ["kind", "Kind"]] as [v, label]}
-            <button data-excolour={v} aria-pressed={app.colour === v}
-              onclick={() => setColour(v)}>{label}</button>
-          {/each}
-        </div>
-        <span class="gap"></span>
-        <div class="fopts" role="group" aria-label="Which edges to draw">
-          {#each [["red", "Essential"], ["all", "All"]] as [v, label]}
-            <button data-exedges={v} aria-pressed={app.edges === v}
-              onclick={() => setEdges(v)}>{label}</button>
-          {/each}
-        </div>
-        <div class="ex-zoom" role="group" aria-label="Zoom">
-          <button id="exZoomOut" aria-label="Zoom out" onclick={() => canvas?.zoomBy(1 / 1.3)}>−</button>
-          <span id="exZoomLab">{Math.round(app.zoom * 100)}%</span>
-          <button id="exZoomIn" aria-label="Zoom in" onclick={() => canvas?.zoomBy(1.3)}>+</button>
-          <button id="exFit" onclick={() => canvas?.fit()}>Fit</button>
-        </div>
-      </div>
+      {/each}
+      <span class="text-gray-500">left to right — a box sits after what it rests on</span>
+    </div>
 
-      <Canvas bind:api={canvas} />
-
-      <div class="ex-foot">
-        <div class="ex-status" id="exStatus">
-          {#if app.status?.warn}
-            <span class="warn">{app.status.warn}</span>
-          {:else if statusNode}
-            <span class="st"><b>{fmt(app.status.below)}</b> it rests on</span>
-            <span class="st"><b>{fmt(app.status.above)}</b> rest on it</span>
-            {#if statusNode.kind === "group"}
-              <span class="st"><b>{fmt(statusNode.count)}</b> results inside</span>
-            {/if}
-          {:else}
-            <span class="muted">
-              {app.mode === "cone"
-                ? "The neighbourhood of one declaration. Double-click another to move it there."
-                : "Click a box to read it and to light what it touches. ＋ opens it."}
-            </span>
-          {/if}
-        </div>
-        <div class="legend" id="exLegend">
-          {#each legend as item}
-            {#if item.muted}
-              <span class="lg muted">{item.muted}</span>
-            {:else}
-              <span class="lg" class:fam={item.family}>
-                <i class="sw" style="background: {item.colour}"></i>
-                {#if item.family}<b>{item.label}</b>{:else}{item.label}{/if}
-              </span>
-            {/if}
-          {/each}
-          <span class="lg muted">left to right — a box sits after what it rests on</span>
-        </div>
-        <div class="ex-stats" id="exStats">{app.stats}</div>
-      </div>
-    </main>
-
-    <Grip id="gripR" hidden={!asideOpen} label="Resize the detail pane"
-      width={asideW} dir={-1} onresize={(w) => (asideW = w)} />
-
-    <aside class="ex-aside" id="exAside" class:collapsed={!asideOpen}
-      style="width: {asideOpen ? asideW + 'px' : ''}" aria-label="The selected node">
-      <div class="ex-pane-h">
-        <button class="ex-icon" id="exDetailBtn" aria-expanded={asideOpen}
-          title="Collapse the detail" onclick={() => (asideOpen = !asideOpen)}>›</button>
-        <span class="ex-pane-t">Detail</span>
-      </div>
-      {#if asideOpen && app.base}<DetailPane />{/if}
-    </aside>
+    <div id="exStats" class="ms-auto shrink-0 ps-3 font-mono text-[10.5px] whitespace-nowrap
+                             text-gray-500">{app.stats}</div>
   </div>
 </div>
+</ThemeProvider>
 
 {#if app.tip}
   <div id="tip" class="on" role="status" aria-live="polite"
