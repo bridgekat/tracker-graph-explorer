@@ -4,23 +4,26 @@
    holding its children, laid out among themselves. So opening a box does not
    rearrange the drawing: the box grows into the room its contents need, its
    siblings move aside, and everything it holds is inside the outline that was
-   already there. The layered layout runs once per container rather than once for
-   the whole canvas, which is also what keeps it cheap.
+   already there. Each container is laid out on its own, innermost first, which is
+   also what keeps it cheap.
 
    Left to right: a node sits to the right of everything it rests on, so an edge
-   always runs back towards the left. */
+   always runs back towards the left.
+
+   Two steps. assemble() decides what is on the canvas and which edges matter,
+   and is synchronous; layout() hands every container to ELK and is not. */
 import * as TD from "./derive.js";
+import { layoutGraph } from "./elk.js";
 
 const PAD = 13;                /* inside a container, around its content */
 const HEAD = 21;               /* the container's title strip */
-const GAP_X = 44, GAP_Y = 11;  /* between columns, and within one */
-const TOP_GAP_X = 68, TOP_GAP_Y = 30;
-const CHANNEL = 46;            /* the widest empty lane the compactor will leave */
+const GAP = { x: 44, y: 11 };  /* between columns, and within one */
+const TOP_GAP = { x: 68, y: 30 };
 
 /* ---------- what is visible ----------
    o.open is the set of open groups; o.cone, if given, is a set of declarations to
    draw on their own instead of the tree; o.measure sizes a box before layout. */
-function build(B, o) {
+function assemble(B, o) {
   const nodes = [], owner = new Int32Array(B.decl.length).fill(-1);
   const add = (n) => { n.id = nodes.length; nodes.push(n); return n; };
 
@@ -87,122 +90,129 @@ function build(B, o) {
     if (x === y) return;                          /* both ends inside one child */
     const box = x.parent, k = x.id * TD.KEY + y.id;
     let e = drawn.get(k);
-    if (!e) drawn.set(k, e = { a: x, b: y, box, key: box.index.get(x.id) * TD.KEY + box.index.get(y.id) });
+    if (!e) drawn.set(k, e = { a: x, b: y, box, key: box.index.get(x.id) * TD.KEY + box.index.get(y.id), pts: null });
     rel.drawn = e;
   });
   const edges = [...drawn.values()];
   edges.forEach((e) => e.box.pairs.add(e.key));
 
-  /* ---------- lay each container out, innermost first ---------- */
-  nodes.forEach(o.measure);          /* box size for a leaf, title width for a container */
-  layout(root, true);
+  /* ---------- which edges the drawing can do without ----------
+     Per container: the shortcuts the reduction found nothing to say, and the ones a
+     cycle forced backwards. Only what is left is laid out; the rest is drawn faint,
+     on request, from port to port. */
+  nodes.forEach((n) => {
+    if (!n.children) return;
+    const pairs = [...n.pairs].map((k) => [Math.floor(k / TD.KEY), k % TD.KEY]);
+    const { red, back } = TD.reduce(n.children.length, pairs);
+    const inRed = new Set(red.map(([a, b]) => a * TD.KEY + b));
+    n.redundant = new Set([...n.pairs].filter((k) => !inRed.has(k)));
+    back.forEach(([a, b]) => n.redundant.add(a * TD.KEY + b));
+  });
+  edges.forEach((e) => { e.essential = !e.box.redundant.has(e.key); });
 
-  /* ---------- absolute positions, so edges can be drawn anywhere ---------- */
+  nodes.forEach(o.measure);          /* box size for a leaf, title width for a container */
+
+  /* the cone follows what touches what, not what the drawing chose to merge */
+  const adj = { out: nodes.map(() => []), in: nodes.map(() => []) };
+  fine.forEach((r) => { adj.out[r.a.id].push(r.b.id); adj.in[r.b.id].push(r.a.id); });
+
+  return { root, nodes, edges, fine: [...fine.values()], owner, adj, boxes: nodes.length - 1, width: 0, height: 0 };
+}
+
+/* ---------- where everything goes ----------
+   One ELK graph mirrors the scene: a container is a compound node holding its
+   children and the essential edges between them. With hierarchy handled as
+   "separate children" ELK lays each container out on its own, innermost first,
+   and sizes it from what it holds — the nesting described above, in one call. */
+const px = (v) => String(Math.round(v * 10) / 10);
+
+function toElk(S) {
+  const options = (n) => {
+    /* the areas at the top of the tree stand further apart than the rest; a
+       neighbourhood's declarations, which also sit at the root, do not */
+    const gap = n.kind === "root" && n.children[0]?.kind === "group" ? TOP_GAP : GAP;
+    const opt = {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.hierarchyHandling": "SEPARATE_CHILDREN",
+      "elk.edgeRouting": "SPLINES",
+      "elk.spacing.nodeNode": px(gap.y),
+      "elk.layered.spacing.nodeNodeBetweenLayers": px(gap.x),
+      "elk.spacing.edgeNode": "8",
+      "elk.spacing.edgeEdge": "4",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "10",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "4",
+      "elk.padding": n.kind === "root"
+        ? "[top=0,left=0,bottom=0,right=0]"
+        : `[top=${PAD + HEAD},left=${PAD},bottom=${PAD},right=${PAD}]`,
+    };
+    if (n.kind !== "root") {
+      /* an open container takes its size from its contents, but never less than
+         the room its own title needs */
+      opt["elk.nodeSize.constraints"] = "MINIMUM_SIZE";
+      opt["elk.nodeSize.minimum"] = `(${Math.ceil(n.headW)},${PAD + HEAD + PAD})`;
+    }
+    return opt;
+  };
+  const conv = (n) => {
+    const node = { id: String(n.id) };
+    if (n.children) {
+      node.layoutOptions = options(n);
+      node.children = n.children.map(conv);
+      node.edges = [];
+    } else {
+      node.width = n.w; node.height = n.h;
+    }
+    return node;
+  };
+  const g = conv(S.root);
+  const byId = new Map();
+  (function index(node) { byId.set(node.id, node); (node.children || []).forEach(index); })(g);
+  S.edges.forEach((e) => {
+    if (!e.essential) return;
+    /* an edge runs from what is rested on to what rests on it, so the dependent
+       lands to the right */
+    byId.get(String(e.box.id)).edges.push({ id: `${e.a.id}-${e.b.id}`, sources: [String(e.b.id)], targets: [String(e.a.id)] });
+  });
+  return g;
+}
+
+async function layout(S) {
+  const out = await layoutGraph(toElk(S));
+  const edgeOf = new Map(S.edges.map((e) => [`${e.a.id}-${e.b.id}`, e]));
+
+  /* positions, relative to the parent's content origin as the drawing expects
+     them; ELK gives them relative to the parent's corner, padding included */
+  (function read(node, parent) {
+    const n = S.nodes[+node.id];
+    if (parent) {
+      n.x = node.x - (parent.kind === "root" ? 0 : PAD);
+      n.y = node.y - (parent.kind === "root" ? 0 : PAD + HEAD);
+    }
+    if (n.children) {
+      n.w = node.width; n.h = node.height;
+      node.children.forEach((c) => read(c, n));
+    }
+    (node.edges || []).forEach((ed) => {
+      const e = edgeOf.get(ed.id), s = ed.sections[0];
+      e.pts = [s.startPoint, ...(s.bendPoints || []), s.endPoint].map((p) => [p.x, p.y]);
+    });
+  })(out, null);
+  S.width = out.width; S.height = out.height;
+
+  /* absolute positions, so edges can be drawn anywhere */
   (function place(n, ox, oy) {
     n.ax = ox; n.ay = oy;
     if (!n.children) return;
     n.cx = ox + (n.kind === "root" ? 0 : PAD);
     n.cy = oy + (n.kind === "root" ? 0 : PAD + HEAD);
     n.children.forEach((c) => place(c, n.cx + c.x, n.cy + c.y));
-  })(root, 0, 0);
-
-  /* ---------- which edges the drawing can do without ---------- */
-  edges.forEach((e) => { e.essential = !e.box.redundant.has(e.key); });
-
-  /* the cone follows what touches what, not what the drawing chose to merge */
-  const adj = { out: nodes.map(() => []), in: nodes.map(() => []) };
-  fine.forEach((r) => { adj.out[r.a.id].push(r.b.id); adj.in[r.b.id].push(r.a.id); });
-
-  return { root, nodes, edges, fine: [...fine.values()], owner, adj, width: root.w, height: root.h };
-}
-
-/* ---------- one container ---------- */
-function layout(n, isTop) {
-  if (!n.children) return;           /* a leaf was already measured */
-  n.children.forEach((c) => layout(c, false));
-
-  const kids = n.children, m = kids.length;
-  const pairs = [...n.pairs].map((k) => [Math.floor(k / TD.KEY), k % TD.KEY]);
-  const core = TD.layoutCore(m, pairs, {
-    nameOf: (i) => kids[i].sort,
-    iterations: m > 400 ? 6 : 16,
-    seeds: m > 900 ? 1 : 0,
+  })(S.root, 0, 0);
+  /* a route is given in its container's frame, corner included */
+  S.edges.forEach((e) => {
+    if (e.pts) e.pts = e.pts.map(([x, y]) => [x + e.box.ax, y + e.box.ay]);
   });
-  const gx = isTop ? TOP_GAP_X : GAP_X, gy = isTop ? TOP_GAP_Y : GAP_Y;
-
-  /* columns run left to right, each as wide as the widest thing in it */
-  const colW = new Array(core.L + 1).fill(0), colX = [];
-  for (let i = 0; i < m; i++) colW[core.layer[i]] = Math.max(colW[core.layer[i]], kids[i].w);
-  let run = 0;
-  colW.forEach((w) => { colX.push(run); run += w + gx; });
-  const contentW = Math.max(0, run - gx);
-
-  /* down the column, by the same priority method the layers use */
-  const pos = TD.xAssign(core, (k) => (core.real[k] ? kids[k].h / 2 : 2), gy, m > 400 ? 8 : 16);
-  squeeze(core, kids, pos, gy);
-
-  let lo = Infinity, hi = -Infinity;
-  for (let i = 0; i < m; i++) {
-    lo = Math.min(lo, pos[i] - kids[i].h / 2);
-    hi = Math.max(hi, pos[i] + kids[i].h / 2);
-  }
-  const contentH = m ? hi - lo : 0;
-  for (let i = 0; i < m; i++) {
-    const l = core.layer[i];
-    /* centred in its column: one open container makes a column far wider than its
-       neighbours need, and hugging either edge would put all of that slack on one
-       side of every edge that crosses it */
-    kids[i].x = colX[l] + (colW[l] - kids[i].w) / 2;
-    kids[i].y = pos[i] - lo - kids[i].h / 2;
-  }
-
-  /* the shortcuts: pairs the reduction found nothing to say, and the ones it reversed */
-  const inRed = new Set(core.red.map(([a, b]) => a * TD.KEY + b));
-  n.redundant = new Set([...n.pairs].filter((k) => !inRed.has(k)));
-  core.back.forEach(([a, b]) => n.redundant.add(a * TD.KEY + b));
-
-  if (n.kind === "root") { n.w = contentW; n.h = contentH; }
-  else {
-    n.w = Math.max(contentW + 2 * PAD, n.headW);
-    n.h = contentH + 2 * PAD + HEAD;
-  }
+  return S;
 }
 
-/* Squeeze out the empty lanes. The priority method places each column well but
-   says nothing about the height of the whole block, and a container of a few
-   unrelated clusters is otherwise mostly air. */
-function squeeze(core, kids, pos, gap) {
-  const spans = [];
-  for (let i = 0; i < core.N2; i++) {
-    const half = core.real[i] ? kids[i].h / 2 : 2;
-    spans.push([pos[i] - half, pos[i] + half]);
-  }
-  if (spans.length < 2) return;
-  spans.sort((a, b) => a[0] - b[0]);
-  const lane = Math.max(gap, CHANNEL);
-  const merged = [spans[0].slice()];
-  for (let i = 1; i < spans.length; i++) {
-    const last = merged[merged.length - 1];
-    if (spans[i][0] - last[1] < lane) last[1] = Math.max(last[1], spans[i][1]);
-    else merged.push(spans[i].slice());
-  }
-  if (merged.length < 2) return;
-  const shift = [];
-  let run = merged[0][0];
-  for (const [top, bottom] of merged) {
-    shift.push(run - top);
-    run += (bottom - top) + lane;
-  }
-  /* the lane a position falls in, by binary search over the merged spans */
-  const at = (v) => {
-    let a = 0, b = merged.length - 1;
-    while (a < b) {
-      const mid = (a + b + 1) >> 1;
-      if (merged[mid][0] <= v) a = mid; else b = mid - 1;
-    }
-    return v + shift[a];
-  };
-  for (let i = 0; i < core.N2; i++) pos[i] = at(pos[i]);
-}
-
-export { build, PAD, HEAD };
+export { assemble, layout, PAD, HEAD };

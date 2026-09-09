@@ -23,9 +23,9 @@ The page starts with one box per area, and every box is a door.
 **A box does not become a new drawing when you open it — it becomes a container.** Its children are
 laid out inside the outline that was already there, its siblings move aside to make room, and the
 camera holds its corner where it was, so you can see what was inside the thing you just opened.
-That is the whole reason the layout is nested: the layered pass runs once per container rather than
-once for the canvas, so opening a group cannot reorder anything outside it. Nesting goes as deep as
-the plan does — a library holding an area holding a module holding its theorems.
+That is the whole reason the layout is nested: each container is laid out on its own rather than
+the canvas as a whole, so opening a group cannot reorder anything outside it. Nesting goes as deep
+as the plan does — a library holding an area holding a module holding its theorems.
 
 **Left to right.** A box sits after everything it rests on, so an edge always runs back towards the
 left, and depth reads along the page. An edge that has to run the other way is one the layering
@@ -81,20 +81,20 @@ is computed here, for the view on screen, every time it changes.
   an edge the layering had to reverse.
 * **Cycles.** The real graph between declarations is acyclic, but the graph between *containers*
   need not be. A greedy feedback-arc pass picks a linear order, the edges that contradict it are
-  counted and drawn dashed, and the layering runs on what is left.
-* **Layers.** The longest path to a node that rests on nothing, then a pass that slides each node
-  within its slack to shorten the edges around it.
+  counted and drawn dashed, and the reduction runs on what is left.
 * **The essential edges.** The transitive reduction, over bitsets so that it holds up when every
   module is opened at once. Most edges in a view like that are shortcuts across a chain the drawing
   already shows; dropping them loses no reachability and is the difference between a diagram and a
   smear. The full set is one click away.
-* **The order down a column.** Median sweeps and adjacent transposition from three starting orders,
-  keeping whichever run crosses least, counting crossings by Barth, Jünger and Mutzel so a column of
-  a thousand boxes stays cheap. Long edges pass through invisible nodes while that runs, which is
-  what keeps them from cutting across; the drawn edge itself is one curve from port to port.
-* **The height of a container.** The priority method places each column, and then a pass squeezes
-  every empty lane wider than it needs to be, because a container of a few unrelated clusters is
-  otherwise mostly air.
+* **The layout.** Everything from here on is the Eclipse Layout Kernel's layered algorithm
+  ([ELK](https://eclipse.dev/elk/), as elkjs): the layering, the order down a column, the position
+  of each box by Brandes–Köpf, and the route of each edge as a spline that goes round boxes rather
+  than through them. The whole scene goes in as one graph whose compound nodes are the containers,
+  with hierarchy handled as *separate children*: each container is laid out on its own, innermost
+  first, and sized from what it holds, which is the nesting above in one call. A container of a
+  few unrelated clusters comes out packed rather than stacked, because ELK lays connected
+  components out separately. The layout runs in a Web Worker, so the page stays responsive while
+  a view at full depth is placed.
 
 None of this is specific to any project. The page has no notion of a backbone or a surface — those
 are conventions of `tracker/`, not of the tracker — it only knows that the roots of the tree it was
@@ -112,6 +112,10 @@ components; the canvas is not. A scene at full depth is thousands of nodes and t
 edges, and diffing that against a virtual DOM every time the pointer moves would cost more than
 drawing it, so `lib/canvas.js` owns one `<svg>` and redraws it when the state says to.
 
+The layout is elkjs, which is most of the built file's size. There is no worker script to fetch
+from a page that opens from `file://`, so the worker's source is inlined as a string and started
+from a blob URL; where a worker cannot be made, the same source runs on the main thread.
+
 A doc comment is Markdown, and the interesting half of one is usually inside a code span — a norm or
 an operator in `backticks` inside **bold**. marked does that parsing and `Prose.svelte` renders its
 tokens, so every value reaches the page as text in a template and nothing a graph file says can
@@ -126,8 +130,9 @@ become markup. There is no `{@html}` anywhere, and a test asserts it.
 | `src/StateDot.svelte` | the coloured dot that says what state a thing is in |
 | `src/Canvas.svelte` | the viewport, its overlays and the tooltip |
 | `src/app.css`, `src/styles/` | the palette, the tokens and the whole of the look, the canvas included |
-| `src/lib/derive.js` | reading a graph, and the layered layout of any DAG — no DOM in it |
+| `src/lib/derive.js` | reading a graph, and the transitive reduction of a container's edges — no DOM in it |
 | `src/lib/scene.js` | the nested scene: what boxes exist for an expansion state, and where |
+| `src/lib/elk.js` | the layout engine, ELK layered, in a worker |
 | `src/lib/canvas.js` | the SVG drawing, and the pointer and key handling on it |
 | `src/lib/state.svelte.js` | the state, and the few actions that change it |
 | `src/lib/util.js` | the colours, the formatting and the text measuring |

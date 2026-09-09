@@ -79,6 +79,16 @@
     </Alert>
   {/if}
 
+  {#if app.busy}
+    <div
+      id="exBusy"
+      class="ex-busy absolute top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] text-gray-600 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+      role="status"
+    >
+      Laying out…
+    </div>
+  {/if}
+
   {#if app.tooBig}
     <div id="exBig" class="absolute inset-0 flex items-center justify-center p-6">
       <Card class="max-w-lg p-5">

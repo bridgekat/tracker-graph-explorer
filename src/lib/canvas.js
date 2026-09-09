@@ -197,14 +197,29 @@ export function createCanvas({ svg, viewport, on }) {
 
   /* ---------- edges ---------- */
   const port = (n, right) => [right ? n.ax + n.w : n.ax, n.ay + n.h / 2];
-  /* One curve from one port to the other. An edge runs from the dependent back to
-     what it rests on, so leftward; one that has to run the other way is one the
-     layering could not honour, and it is drawn dashed. */
+  const pt = (p) => `${r2(p[0])},${r2(p[1])}`;
+  /* An edge the layout routed comes as a spline: after the first point, every three
+     are the control points of one cubic piece, and a short tail is a quadratic or a
+     line. One the layout did not see — a shortcut, drawn only on request — is one
+     curve from port to port. An edge runs from the dependent back to what it rests
+     on, so leftward; one that has to run the other way is one the layering could not
+     honour, and it is drawn dashed. */
   function edgePath(e) {
     e.back = e.b.ax + e.b.w > e.a.ax;
+    if (e.pts) {
+      const P = e.pts;
+      let d = `M${pt(P[0])}`;
+      for (let i = 1; i < P.length;) {
+        const left = P.length - i;
+        if (left >= 3) { d += `C${pt(P[i])} ${pt(P[i + 1])} ${pt(P[i + 2])}`; i += 3; }
+        else if (left === 2) { d += `Q${pt(P[i])} ${pt(P[i + 1])}`; i += 2; }
+        else { d += `L${pt(P[i])}`; i += 1; }
+      }
+      return d;
+    }
     const p = port(e.a, e.back), q = port(e.b, !e.back);
     const mx = r2((p[0] + q[0]) / 2);
-    return `M${r2(p[0])},${r2(p[1])}C${mx},${r2(p[1])} ${mx},${r2(q[1])} ${r2(q[0])},${r2(q[1])}`;
+    return `M${pt(p)}C${mx},${r2(p[1])} ${mx},${r2(q[1])} ${pt(q)}`;
   }
   function drawEdges() {
     S.edges.forEach((e) => {

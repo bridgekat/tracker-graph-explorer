@@ -28,6 +28,16 @@
   cursor: grabbing
 }
 
+/* most layouts are done before this would be seen; only a long one shows it */
+.ex-busy {
+  animation: ex-busy-in .15s .4s both
+}
+
+@keyframes ex-busy-in {
+  from { opacity: 0 }
+  to { opacity: 1 }
+}
+
 /* ---- the drawing ---- */
 .ex-edge {
   fill: none;

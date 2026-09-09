@@ -2,14 +2,13 @@
    Input is the documented contract: { groups[], nodes[], edges[] }.
    Everything the page draws is computed here, with no project-specific assumptions.
 
-   Three layers sit on top of one another:
+   Two things live here:
      buildBase   the group tree and the graph between declarations, read once
-     layoutCore  a layered (Sugiyama) layout of any DAG: cycles broken, layers
-                 assigned, the transitive reduction taken, each layer ordered
-     xAssign     positions along the layer, by the priority method
+     reduce      the transitive reduction of one container's edges, with the
+                 cycles among them broken first
 
-   scene.js calls the last two once per container; nothing here knows what a
-   container is. */
+   scene.js calls the second once per container and hands what survives to the
+   layout engine; nothing here knows what a container is. */
 const STATES = ["proved", "stated", "open", "axioms", "wrong"];
 const KEY = 1048576;                     /* pair-key radix; graphs stay well under it */
 
@@ -183,10 +182,12 @@ function buildBase(g) {
   };
 }
 /* ================================================================
-   layoutCore — the layered layout of any DAG, up to ordering.
-   pairs: [a, b] means "a depends on b", so a is drawn above b.
+   reduce — what the drawing can do without, for one container.
+   pairs: [a, b] means "a depends on b". Returns the edges that survive the
+   transitive reduction (`red`) and the ones a cycle forced backwards (`back`);
+   everything else is a shortcut across a chain the drawing already shows.
    ================================================================ */
-function layoutCore(R, pairs, opt = {}) {
+function reduce(R, pairs) {
   const succ = [], pred = [];
   for (let i = 0; i < R; i++) { succ.push(new Set()); pred.push(new Set()); }
   pairs.forEach(([a, b]) => {
@@ -248,19 +249,9 @@ function layoutCore(R, pairs, opt = {}) {
     dpred[u].forEach((w) => { if (--ind[w] === 0) q.push(w); });
   }
 
-  /* --- layering: longest path from the bottom --- */
-  const layer = new Int32Array(R);
-  topo.forEach((u) => {
-    let mx = 0;
-    dsucc[u].forEach((v) => { if (layer[v] + 1 > mx) mx = layer[v] + 1; });
-    layer[u] = mx;
-  });
-  let L = 0;
-  for (let i = 0; i < R; i++) if (layer[i] > L) L = layer[i];
-
   /* --- transitive reduction, over bitsets so it scales past a few hundred nodes --- */
   const WS = (R + 31) >> 5;
-  let reach = new Uint32Array(R * WS);
+  const reach = new Uint32Array(R * WS);
   topo.forEach((u) => {
     const ub = u * WS;
     for (let i = 0; i < dsucc[u].length; i++) {
@@ -278,246 +269,7 @@ function layoutCore(R, pairs, opt = {}) {
     }
     if (!dup) red.push([u, v]);
   });
-  reach = null;
-
-  /* --- slide each node within its slack to shorten the essential edges --- */
-  const rdn = [], rup = [];
-  for (let i = 0; i < R; i++) { rdn.push([]); rup.push([]); }
-  red.forEach(([a, b]) => { rdn[a].push(b); rup[b].push(a); });
-  for (let it = 0; it < 40; it++) {
-    let moved = 0;
-    for (const u of topo) {
-      let lo = 0, hi = Infinity;
-      rdn[u].forEach((v) => { if (layer[v] + 1 > lo) lo = layer[v] + 1; });
-      rup[u].forEach((w) => { if (layer[w] - 1 < hi) hi = layer[w] - 1; });
-      if (hi === Infinity) hi = L;
-      if (hi < lo) hi = lo;
-      let bestL = layer[u], bestC = Infinity;
-      for (let l = lo; l <= hi; l++) {
-        let c = 0;
-        rdn[u].forEach((v) => { c += l - layer[v]; });
-        rup[u].forEach((w) => { c += layer[w] - l; });
-        if (c < bestC) { bestC = c; bestL = l; }
-      }
-      if (bestL !== layer[u]) { layer[u] = bestL; moved++; }
-    }
-    if (!moved) break;
-  }
-
-  /* --- proper graph: long edges routed through invisible nodes --- */
-  const lay = Array.from(layer), real = [], chains = [];
-  for (let i = 0; i < R; i++) real.push(true);
-  red.forEach(([a, b]) => {
-    /* the chain runs downwards, from the dependent to what it rests on, so the
-       routing nodes are laid out in descending layers and every hop is one layer */
-    const ch = [a];
-    for (let l = lay[a] - 1; l > lay[b]; l--) { ch.push(lay.length); lay.push(l); real.push(false); }
-    ch.push(b);
-    chains.push(ch);
-  });
-  const N2 = lay.length;
-  const up = [], dn = [];
-  for (let i = 0; i < N2; i++) { up.push([]); dn.push([]); }
-  chains.forEach((ch) => {
-    for (let i = 0; i < ch.length - 1; i++) { dn[ch[i]].push(ch[i + 1]); up[ch[i + 1]].push(ch[i]); }
-  });
-
-  /* --- ordering within each layer --- */
-  const rows = [];
-  for (let l = 0; l <= L; l++) rows.push([]);
-  const nameOf = opt.nameOf || ((i) => String(i));
-  const byName = [];
-  for (let i = 0; i < R; i++) byName.push(i);
-  byName.sort((a, b) => (nameOf(a) < nameOf(b) ? -1 : 1));
-  const SEEDS = [byName, topo.slice(), linear.slice()];
-  const applySeed = (seq) => {
-    for (let l = 0; l <= L; l++) rows[l] = [];
-    seq.forEach((u) => { if (u < R) rows[lay[u]].push(u); });
-    for (let d = R; d < N2; d++) rows[lay[d]].push(d);
-  };
-  const rank = new Int32Array(N2);
-  const reindex = () => { rows.forEach((r) => { r.forEach((u, i) => { rank[u] = i; }); }); };
-
-  /* bilayer crossings by Barth, Jünger and Mutzel: sort the endpoints, then count
-     inversions with an accumulator tree, which is what lets a big layer stay cheap */
-  const biCross = (l) => {
-    if (l < 0 || l >= L) return 0;
-    const south = rows[l], northN = rows[l + 1].length;
-    if (!northN) return 0;
-    const seq = [];
-    for (const s of south) {
-      const nb = up[s];
-      if (!nb.length) continue;
-      const tmp = nb.map((v) => rank[v]).sort((a, b) => a - b);
-      for (const r of tmp) seq.push(r);
-    }
-    if (seq.length < 2) return 0;
-    let first = 1;
-    while (first < northN) first *= 2;
-    const tree = new Int32Array(2 * first - 1);
-    first -= 1;
-    let cross = 0;
-    for (const s of seq) {
-      let idx = s + first;
-      tree[idx]++;
-      while (idx > 0) {
-        if (idx % 2) cross += tree[idx + 1];
-        idx = (idx - 1) >> 1;
-        tree[idx]++;
-      }
-    }
-    return cross;
-  };
-  const total = () => {
-    let s = 0;
-    for (let l = 0; l < L; l++) s += biCross(l);
-    return s;
-  };
-  const med = (u, dir) => {
-    const nb = dir ? up[u] : dn[u];
-    if (!nb.length) return -1;
-    const arr = nb.map((v) => rank[v]).sort((a, b) => a - b);
-    const h = arr.length >> 1;
-    return arr.length % 2 ? arr[h] : (arr[h - 1] + arr[h]) / 2;
-  };
-  const wmedian = (down) => {
-    const seq = [];
-    for (let l = 0; l <= L; l++) seq.push(l);
-    if (!down) seq.reverse();
-    seq.forEach((li) => {
-      const key = new Map();
-      rows[li].forEach((u) => { const m = med(u, !down); key.set(u, m < 0 ? rank[u] : m); });
-      rows[li].sort((a, b) => key.get(a) - key.get(b) || rank[a] - rank[b]);
-      reindex();
-    });
-  };
-  const pairCross = (u, v, adj) => {
-    const A = adj[u], B = adj[v];
-    let c = 0;
-    for (let i = 0; i < A.length; i++) for (let j = 0; j < B.length; j++)
-      if (rank[A[i]] > rank[B[j]]) c++;
-    return c;
-  };
-  const transpose = () => {
-    let improved = true, guard = 0;
-    while (improved && guard++ < 30) {
-      improved = false;
-      for (let li = 0; li <= L; li++) {
-        const row = rows[li];
-        for (let i = 0; i + 1 < row.length; i++) {
-          const u = row[i], v = row[i + 1];
-          const before = pairCross(u, v, up) + pairCross(u, v, dn);
-          const after = pairCross(v, u, up) + pairCross(v, u, dn);
-          if (after < before) {
-            row[i] = v; row[i + 1] = u;
-            rank[v] = i; rank[u] = i + 1;
-            improved = true;
-          }
-        }
-      }
-    }
-  };
-  const ITER = opt.iterations || (N2 > 4000 ? 4 : N2 > 1200 ? 8 : 16);
-  const seeds = opt.seeds === 1 ? [SEEDS[0]] : SEEDS;
-  let best = null, bestC = Infinity;
-  const keep = (c) => {
-    if (c >= bestC) return;
-    bestC = c;
-    best = rows.map((r) => r.slice());
-  };
-  seeds.forEach((seq) => {
-    applySeed(seq); reindex();
-    keep(total());
-    for (let it = 0; it < ITER; it++) {
-      wmedian(it % 2 === 0);
-      transpose();
-      keep(total());
-    }
-  });
-  for (let l = 0; l <= L; l++) rows[l] = best[l];
-  reindex();
-
-  return { L, N2, layer, real, rows, up, dn, red, back };
-}
-
-/* --- x by the priority method: routing nodes first, so long edges straighten.
-       halfWidth(i) is in whatever unit the caller wants x back in. --- */
-function xAssign(core, halfWidth, sep, iterations) {
-  const { N2, rows, up, dn, real, L } = core;
-  const prio = new Int32Array(N2);
-  for (let i = 0; i < N2; i++) prio[i] = real[i] ? (up[i].length + dn[i].length) : 100000;
-  const pos = new Float64Array(N2);
-  const gapOf = (a, b) => halfWidth(a) + halfWidth(b) + sep;
-  rows.forEach((r) => {
-    let x = 0;
-    r.forEach((u, i) => {
-      if (i) x += gapOf(r[i - 1], u);
-      pos[u] = x;
-    });
-    const mid = x / 2;
-    r.forEach((u) => { pos[u] -= mid; });
-  });
-  const medPos = (arr) => {
-    if (!arr.length) return null;
-    const a = arr.map((v) => pos[v]).sort((x, y) => x - y);
-    const h = a.length >> 1;
-    return a.length % 2 ? a[h] : (a[h - 1] + a[h]) / 2;
-  };
-  /* move one node towards its median, as far as the nodes beyond it will allow,
-     and drag the lower-priority ones along with it */
-  const shift = (row, i, target) => {
-    const v = row[i];
-    if (target > pos[v] + 1e-9) {
-      let need = 0, limit = Infinity;
-      for (let j = i + 1; j < row.length; j++) {
-        need += gapOf(row[j - 1], row[j]);
-        if (prio[row[j]] >= prio[v]) { limit = pos[row[j]] - need; break; }
-      }
-      const nx = Math.min(target, limit);
-      if (nx <= pos[v]) return;
-      pos[v] = nx;
-      for (let j = i + 1; j < row.length; j++) {
-        const g = gapOf(row[j - 1], row[j]);
-        if (pos[row[j]] < pos[row[j - 1]] + g) pos[row[j]] = pos[row[j - 1]] + g; else break;
-      }
-    } else if (target < pos[v] - 1e-9) {
-      let need = 0, limit = -Infinity;
-      for (let j = i - 1; j >= 0; j--) {
-        need += gapOf(row[j], row[j + 1]);
-        if (prio[row[j]] >= prio[v]) { limit = pos[row[j]] + need; break; }
-      }
-      const nx = Math.max(target, limit);
-      if (nx >= pos[v]) return;
-      pos[v] = nx;
-      for (let j = i - 1; j >= 0; j--) {
-        const g = gapOf(row[j], row[j + 1]);
-        if (pos[row[j]] > pos[row[j + 1]] - g) pos[row[j]] = pos[row[j + 1]] - g; else break;
-      }
-    }
-  };
-  const IT = iterations || 16;
-  for (let it = 0; it < IT; it++) {
-    const down = it % 2 === 0;
-    const seq = [];
-    for (let l = 0; l <= L; l++) seq.push(l);
-    if (!down) seq.reverse();
-    seq.forEach((li) => {
-      const row = rows[li];
-      const byPrio = row.map((_, i) => i).sort((a, b) => prio[row[b]] - prio[row[a]]);
-      byPrio.forEach((i) => {
-        const v = row[i], ref = down ? up[v] : dn[v];
-        const t = medPos(ref.length ? ref : (down ? dn[v] : up[v]));
-        if (t !== null) shift(row, i, t);
-      });
-    });
-  }
-  rows.forEach((r) => {
-    for (let i = 1; i < r.length; i++) {
-      const g = gapOf(r[i - 1], r[i]);
-      if (pos[r[i]] - pos[r[i - 1]] < g) pos[r[i]] = pos[r[i - 1]] + g;
-    }
-  });
-  return pos;
+  return { red, back };
 }
 
 /* --- the cone around a set of declarations, over the declaration graph --- */
@@ -539,4 +291,4 @@ function cone(base, seeds, dir, radius) {
   return out;
 }
 
-export { STATES, KEY, buildBase, layoutCore, xAssign, cone };
+export { STATES, KEY, buildBase, reduce, cone };
