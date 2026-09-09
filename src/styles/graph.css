@@ -149,6 +149,11 @@
   stroke-width: 2.2
 }
 
+/* inside the focused container, the drawing is the point: its edges keep their look */
+#exSvg.focused .ex-edge.within {
+  opacity: 1
+}
+
 #exSvg.far .ex-lab,
 #exSvg.far .ex-num,
 #exSvg.far .ex-togi,

@@ -146,6 +146,10 @@ try {
   };
   await send("Page.enable");
   await send("Runtime.enable");
+  /* the page follows the system theme, and the checks below read colours: pin it */
+  await send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: "light" }],
+  });
   /* anything the page throws, so that the last check means something */
   await send("Page.addScriptToEvaluateOnNewDocument", {
     source: "window.__errs = []; addEventListener('error', e => __errs.push(e.message));"
@@ -192,6 +196,34 @@ try {
   await clickAt(...at.toggle);
   const back = await boxes();
   check("− collapses it again", back === before, `${more} → ${back} boxes`);
+
+  /* --- selecting an open container fades the graph around it, not what is in it --- */
+  at = await evaluate(locate("Numlib/Krylov,"));
+  await clickAt(...at.toggle);
+  await sleep(300);
+  const head = await evaluate(`
+    const g = [...document.querySelectorAll('#exSvg .ex-node.grp')]
+      .find(e => e.getAttribute('aria-label').startsWith('Numlib/Krylov,'));
+    const r = g.querySelector(':scope > .ex-chead').getBoundingClientRect();
+    return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)];`);
+  await clickAt(...head);
+  const within = await evaluate(`
+    const k = [...document.querySelectorAll('#exSvg .ex-node.grp')]
+      .find(e => e.getAttribute('aria-label').startsWith('Numlib/Krylov,'));
+    const edges = [...k.querySelectorAll('.ex-edge')];
+    return {
+      sel: k.classList.contains('sel'),
+      kids: k.querySelectorAll('.ex-node').length,
+      dim: k.querySelectorAll('.ex-node.dim').length,
+      edges: edges.length,
+      faint: edges.filter(e => parseFloat(getComputedStyle(e).opacity) < 0.5).length,
+      outside: document.querySelectorAll('#exSvg .ex-node.dim').length,
+    };`);
+  check("selecting an open container keeps its contents as they were",
+    within.sel && within.kids > 0 && within.dim === 0 && within.edges > 0 && within.faint === 0 && within.outside > 0,
+    `${within.kids} children, ${within.dim} dimmed; ${within.faint} of ${within.edges} edges faint; ${within.outside} dimmed outside`);
+  at = await evaluate(locate("Numlib/Krylov,"));
+  await clickAt(...at.toggle);
 
   /* --- a drag pans and does not clear the selection --- */
   const camBefore = await evaluate("return document.getElementById('exScene').getAttribute('transform')");

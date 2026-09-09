@@ -294,11 +294,15 @@ export function createCanvas({ svg, viewport, on }) {
       else return;
       if ((lit.get(r.drawn) || 0) < rank) lit.set(r.drawn, rank);
     });
+    /* an edge drawn inside the focused container joins two things it holds: that is
+       not its cone, but it is not the rest of the graph either, so it stays as it is */
+    const within = (e) => { for (let b = e.box; b; b = b.parent) if (b === f) return true; return false; };
     edgeEls.forEach((p) => {
       const rank = lit.get(p.__e) || 0;
       p.classList.toggle("lit-direct", rank === 3);
       p.classList.toggle("lit-down", rank === 2);
       p.classList.toggle("lit-up", rank === 1);
+      p.classList.toggle("within", !!f && within(p.__e));
     });
   }
 
