@@ -104,7 +104,8 @@ given are the coarsest thing about it, and colours them accordingly.
 
 `index.html` is the built page, and the only file you need to use it: open it, drop a `graph.json`
 on it, or publish it beside one. Everything is inlined, so it works from `file://` with nothing to
-fetch and nothing to install.
+fetch and nothing to install. It is built rather than committed: `npm run build` writes it at the
+root, and the Pages workflow publishes the same file.
 
 It is a Svelte app, built by Vite. The chrome — the panes, the index, the detail, the controls — is
 components; the canvas is not. A scene at full depth is thousands of nodes and tens of thousands of
