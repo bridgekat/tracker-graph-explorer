@@ -71,8 +71,8 @@
   cursor: pointer
 }
 
-.ex-node.hover > .ex-box,
-.ex-node.hover > .ex-cbg {
+.ex-node.hover>.ex-box,
+.ex-node.hover>.ex-cbg {
   stroke-width: 2.2
 }
 
@@ -82,7 +82,7 @@
   pointer-events: none
 }
 
-.ex-node.grp > .ex-lab {
+.ex-node.grp>.ex-lab {
   font: 600 11px var(--sans)
 }
 
@@ -117,8 +117,8 @@
   stroke: var(--ink)
 }
 
-.ex-node.sel > .ex-box,
-.ex-node.sel > .ex-cbg {
+.ex-node.sel>.ex-box,
+.ex-node.sel>.ex-cbg {
   stroke: var(--ink);
   stroke-width: 2.4
 }

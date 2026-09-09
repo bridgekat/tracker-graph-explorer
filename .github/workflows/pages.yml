@@ -1,9 +1,8 @@
 # Build the page and publish it to GitHub Pages.
 #
 # What is deployed is dist/index.html — one self-contained file, everything inlined —
-# so the site is that page and nothing else. If a graph.json sits at the root of the
-# repository it is published beside the page, and index.html?graph=graph.json then
-# opens the site with that graph already loaded.
+# so the site is that page and nothing else. It ships with no graph in it: the page is
+# for a graph.json the person opening it supplies, by dropping it on the page.
 #
 # One manual step, once: Settings → Pages → Source → GitHub Actions.
 name: Pages
@@ -40,16 +39,6 @@ jobs:
       - run: npm ci
 
       - run: npm run build
-
-      # Optional: a graph committed at the root is published with the page.
-      - name: Add graph.json if the repository has one
-        run: |
-          if [ -f graph.json ]; then
-            cp graph.json dist/graph.json
-            echo "published graph.json alongside the page"
-          else
-            echo "no graph.json at the root; the page will ask for one"
-          fi
 
       - uses: actions/configure-pages@v5
 

@@ -47,6 +47,7 @@
 }
 
 @layer base {
+
   /* Tailwind v4 defaults an un-coloured border to currentColor, which turns every
      divider a component draws without naming a colour — ButtonToggle's, for one —
      into a black line. Give the default a colour instead of overriding each site. */

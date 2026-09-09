@@ -140,10 +140,9 @@ npm test          # it builds its own browser and serves its own page
 
 `.github/workflows/pages.yml` builds the page on a push to `main` and publishes `dist/` to
 GitHub Pages, which is one file. Turn it on once at Settings → Pages → Source → GitHub Actions.
-A `graph.json` committed at the root is published beside the page, and `?graph=graph.json` then
-opens the site with the plan already loaded; without one the page starts empty and waits for a
-file to be dropped on it. The workflow does not run `npm test`: that wants a browser and a graph
-to work on, and the graph lives outside this repository.
+Nothing is bundled with it: the deployed page is the drawing, and the graph is whatever the
+person opening it drops on the page. The workflow does not run `npm test`, which wants a
+browser and a graph to work on.
 
 The test drives the built page with real pointer events rather than by calling handlers, because
 most of what this page does *is* pointer behaviour — a click that is not a drag, a drag that is not
