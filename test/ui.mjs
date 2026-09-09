@@ -79,12 +79,18 @@ async function evaluate(expression) {
   if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails.exception?.description || r.exceptionDetails));
   return r.result.value;
 }
+/* One scene becoming the next keeps both in the document for a moment; a check
+   that reads the drawing wants the moment over. */
+const SETTLE = "for (let i = 0; i < 60 && document.querySelectorAll('#exSvg .ex-scene').length > 1; i++)"
+  + " await new Promise(r => setTimeout(r, 50));";
+const settled = () => evaluate(SETTLE + " return 1");
 async function clickAt(x, y) {
   const base = { x, y, button: "left", clickCount: 1, buttons: 1 };
   await send("Input.dispatchMouseEvent", { type: "mousePressed", ...base });
   await sleep(30);
   await send("Input.dispatchMouseEvent", { type: "mouseReleased", ...base, buttons: 0 });
   await sleep(450);
+  await settled();
 }
 async function dragBy(x, y, dx, dy) {
   await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1, buttons: 1 });
@@ -156,11 +162,13 @@ try {
       + " addEventListener('unhandledrejection', e => __errs.push(String(e.reason)));",
   });
   await send("Page.navigate", { url: URL_ });
-  await sleep(3500);
+  await sleep(1500);
 
   check("standards mode", (await evaluate("return document.compatMode")) === "CSS1Compat");
   const boxes = () => evaluate("return document.querySelectorAll('#exSvg .ex-node').length");
-  const loaded = await boxes();
+  /* the first layout parses the engine as well as running it; give it a while */
+  let loaded = 0;
+  for (let i = 0; i < 40 && !loaded; i++) { loaded = await boxes(); if (!loaded) await sleep(250); }
   check("graph drawn", loaded > 0, `${loaded} boxes`);
 
   /* --- select: click the body of a box --- */
@@ -255,6 +263,7 @@ try {
       if (!row) return null;
       row.click();
       await new Promise(r => setTimeout(r, 500));
+      ${SETTLE}
       const d = document.getElementById("exDetail");
       return {
         rows: d.querySelectorAll("table tbody tr").length,
@@ -282,6 +291,7 @@ try {
     await new Promise(r => setTimeout(r, 400));
     document.querySelectorAll('#exTree .tw')[0].click();
     await new Promise(r => setTimeout(r, 1200));
+    ${SETTLE}
     const direct = [...document.querySelectorAll('.ex-edge.lit-direct:not(.back)')];
     const cs = direct.length ? getComputedStyle(direct[0]) : null;
     const dash = cs ? cs.strokeDasharray : '';

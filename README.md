@@ -23,6 +23,12 @@ The page starts with one box per area, and every box is a door.
 **A box does not become a new drawing when you open it — it becomes a container.** Its children are
 laid out inside the outline that was already there, its siblings move aside to make room, and the
 camera holds its corner where it was, so you can see what was inside the thing you just opened.
+And it moves: every box slides from where it was to where it now is, an opening container unfolds
+its contents from the box it was, a closing one folds them back into the box it becomes, and an
+edge that is there before and after bends from its old route to its new one. A box stands for a
+group or a declaration, an edge for a pair of them, and that is what survives the change and knows
+where it came from. The motion is off when the system asks for reduced motion, and skipped when a
+view is too big for it to help.
 That is the whole reason the layout is nested: each container is laid out on its own rather than
 the canvas as a whole, so opening a group cannot reorder anything outside it. Nesting goes as deep
 as the plan does — a library holding an area holding a module holding its theorems.
