@@ -18,7 +18,7 @@
   const keep = (d) => {
     const dd = app.base.decl[d];
     if (!app.states.has(dd.state)) return false;
-    if (app.kinds && !app.kinds.has(dd.kind)) return false;
+    if (!app.kinds.has(dd.kind)) return false;
     return true;
   };
 
@@ -76,21 +76,14 @@
 
   const isSel = (t, i) => !!app.sel && app.sel.t === t && app.sel.i === i;
 
-  /* the chips: a state or a kind switched off is one the canvas leaves out */
-  function toggleState(s) {
-    if (app.states.has(s)) app.states.delete(s); else app.states.add(s);
-    if (!app.states.size) TD.STATES.forEach((z) => { if (app.base.meta.states[z]) app.states.add(z); });
+  /* The chips: what is switched on is what the canvas draws. Emptying a row would
+     leave nothing to look at, so the last chip standing is disabled rather than
+     silently switching the whole row back on under the click. */
+  function toggle(set, v) {
+    if (set.has(v)) set.delete(v); else set.add(v);
     rebuild({ anchor: app.sel });
   }
-  let liveKinds = $state(null);
-  function toggleKind(k, all) {
-    liveKinds ??= new Set(all);
-    if (liveKinds.has(k)) liveKinds.delete(k); else liveKinds.add(k);
-    if (!liveKinds.size) all.forEach((z) => liveKinds.add(z));
-    app.kinds = liveKinds.size === all.length ? null : new Set(liveKinds);
-    rebuild({ anchor: app.sel });
-  }
-  const kindOn = (k) => !liveKinds || liveKinds.has(k);
+  const isLast = (set, v) => set.size === 1 && set.has(v);
 
   const ROW = "tw flex w-full cursor-pointer items-center gap-1.5 py-[3px] pe-2 text-left "
     + "text-xs hover:bg-gray-100 dark:hover:bg-gray-800";
@@ -112,7 +105,9 @@
       <ButtonGroup size="xs" aria-label="Filter by state">
         {#each TD.STATES.filter((s) => app.base.meta.states[s] > 0) as s}
           <Button size="xs" color={app.states.has(s) ? "primary" : "alternative"}
-            aria-pressed={app.states.has(s)} onclick={() => toggleState(s)}>
+            aria-pressed={app.states.has(s)} disabled={isLast(app.states, s)}
+            title={isLast(app.states, s) ? "The last state shown cannot be switched off" : ""}
+            onclick={() => toggle(app.states, s)}>
             <i class="{DOT} me-1.5" style="background: var(--st-{s})"></i>
             {STATE_LABEL[s]} {fmt(app.base.meta.states[s])}
           </Button>
@@ -121,8 +116,10 @@
       {#if kinds.length > 1}
         <ButtonGroup size="xs" aria-label="Filter by kind">
           {#each kinds as k}
-            <Button size="xs" color={kindOn(k) ? "primary" : "alternative"}
-              aria-pressed={kindOn(k)} onclick={() => toggleKind(k, kinds)}>
+            <Button size="xs" color={app.kinds.has(k) ? "primary" : "alternative"}
+              aria-pressed={app.kinds.has(k)} disabled={isLast(app.kinds, k)}
+              title={isLast(app.kinds, k) ? "The last kind shown cannot be switched off" : ""}
+              onclick={() => toggle(app.kinds, k)}>
               {k}s {fmt(app.base.meta.kinds[k])}
             </Button>
           {/each}

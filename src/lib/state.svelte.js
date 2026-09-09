@@ -18,10 +18,11 @@ export const app = $state({
   sel: null,
   mode: "tree", coneSeed: null, coneDir: "both", coneRadius: 2,
   colour: "area", edges: "red",
-  states: new SvelteSet(), stateCount: 0, kinds: null,
+  states: new SvelteSet(), stateCount: 0,
+  kinds: new SvelteSet(), kindCount: 0,
   query: "",
   stats: "", status: null, zoom: 1,
-  tooBig: null,                   /* { boxes, scene, opts } waiting on a yes */
+  tooBig: null,                   /* { boxes } waiting on a yes; the scene is held below */
   confirmed: 0,
   tip: null,
 });
@@ -33,13 +34,15 @@ export function attachCanvas(c) {
 }
 
 /* ---------- the filter over declarations ---------- */
+/* A filter is on when some state or kind is switched off. Both are sets of what is
+   shown, never null, so the two chip rows behave the same way as each other. */
 export function filtering() {
-  return (app.states.size !== app.stateCount) || !!app.kinds;
+  return app.states.size !== app.stateCount || app.kinds.size !== app.kindCount;
 }
 function keepDecl(d) {
   const dd = app.base.decl[d];
   if (!app.states.has(dd.state)) return false;
-  if (app.kinds && !app.kinds.has(dd.kind)) return false;
+  if (!app.kinds.has(dd.kind)) return false;
   return true;
 }
 
@@ -75,18 +78,26 @@ function computeScene() {
   return SC.build(app.base, opts);
 }
 
+/* The scene a warning is waiting on. It is deliberately not in `app`: $state deep-proxies
+   plain objects, and a scene at full depth is thousands of nodes that the canvas then
+   writes its own layer references onto. Proxied, those writes land on one identity and
+   the edge records read another, and the drawing comes out with no edges at all. */
+let pending = null;
+
 export function rebuild(opts = {}) {
   if (!app.base || !canvas) return;
   const scene = computeScene();
   const boxes = scene.nodes.length - 1;
   if (boxes > SOFT_LIMIT && boxes > app.confirmed) {
-    app.tooBig = { boxes, scene, opts };
+    pending = { scene, opts };
+    app.tooBig = { boxes };
     return;
   }
   commit(scene, opts);
 }
 function commit(scene, opts) {
   app.tooBig = null;
+  pending = null;
   canvas.setScene(scene, opts);
   canvas.setSelection(app.sel);
   let groups = 0, decls = 0, open = 0;
@@ -101,12 +112,13 @@ function commit(scene, opts) {
   app.stats = parts.join(" · ");
 }
 export function drawAnyway() {
-  if (!app.tooBig) return;
+  if (!app.tooBig || !pending) return;
   app.confirmed = app.tooBig.boxes;
-  commit(app.tooBig.scene, app.tooBig.opts);
+  commit(pending.scene, pending.opts);
 }
 export function collapseToModules() {
   app.tooBig = null;
+  pending = null;
   openAllGroups();
   rebuild();
 }
@@ -173,10 +185,11 @@ export function adopt(raw, label) {
   app.confirmed = 0;
   app.mode = "tree";
   app.coneSeed = null;
-  app.kinds = null;
   app.tooBig = null;
   app.states = new SvelteSet(TD.STATES.filter((s) => m.states[s] > 0));
   app.stateCount = app.states.size;
+  app.kinds = new SvelteSet(Object.keys(m.kinds));
+  app.kindCount = app.kinds.size;
   canvas?.setBase(base);
   /* the areas: the picture of the project that fits on a screen */
   openToLevel(base.tree.length > 40 ? 1 : 2);
