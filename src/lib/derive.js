@@ -10,555 +10,566 @@
 
    scene.js calls the last two once per container; nothing here knows what a
    container is. */
-/* eslint-disable */
+const STATES = ["proved", "stated", "open", "axioms", "wrong"];
+const KEY = 1048576;                     /* pair-key radix; graphs stay well under it */
 
-  var STATES = ["proved", "stated", "open", "axioms", "wrong"];
-  var KEY = 1048576;                       /* pair-key radix; graphs stay well under it */
+function zeroStates() {
+  const o = {};
+  for (const s of STATES) o[s] = 0;
+  return o;
+}
+const normState = (s) => (STATES.includes(s) ? s : "open");
+function lastSeg(name, sep) {
+  const i = name.lastIndexOf(sep);
+  return i < 0 ? name : name.slice(i + 1);
+}
+/* the state a container reports: the worst thing under it wins, so a dot never
+   overstates progress, but a container that still holds finished work is not "open" */
+function rollState(by) {
+  return by.wrong ? "wrong"
+    : by.axioms ? "axioms"
+      : by.open ? (by.proved || by.stated ? "stated" : "open")
+        : by.stated ? "stated" : "proved";
+}
 
-  function zeroStates() {
-    var o = {};
-    for (var i = 0; i < STATES.length; i++) o[STATES[i]] = 0;
-    return o;
+function validate(g) {
+  if (!g || typeof g !== "object") throw new Error("Not a JSON object.");
+  ["nodes", "groups", "edges"].forEach((k) => {
+    if (!Array.isArray(g[k])) throw new Error('Missing the "' + k + '" array. This does not look like `tracker graph` output.');
+  });
+  if (!g.nodes.length) throw new Error("The graph has no nodes.");
+  const n = g.nodes[0];
+  if (typeof n.id !== "string" || typeof n.group !== "string")
+    throw new Error('Nodes need "id" and "group" strings.');
+  if (g.edges.length) {
+    const e = g.edges[0];
+    if (typeof e.from !== "string" || typeof e.to !== "string")
+      throw new Error('Edges need "from" and "to" strings.');
   }
-  function normState(s) { return STATES.indexOf(s) >= 0 ? s : "open"; }
-  function lastSeg(name, sep) {
-    var i = name.lastIndexOf(sep);
-    return i < 0 ? name : name.slice(i + 1);
+  return true;
+}
+
+/* ================================================================
+   base: the group tree, the declaration graph, the module rollup
+   ================================================================ */
+function buildBase(g) {
+  validate(g);
+
+  /* ---- the tree of groups ------------------------------------- */
+  const gidx = {}, T = [];
+  function addGroup(rec) {
+    rec.i = T.length;
+    gidx[rec.name] = rec.i;
+    T.push(rec);
+    return rec.i;
   }
-  /* the state a container reports: the worst thing under it wins, so a dot never
-     overstates progress, but a container that still holds finished work is not "open" */
-  function rollState(by) {
-    return by.wrong ? "wrong"
-      : by.axioms ? "axioms"
-        : by.open ? (by.proved || by.stated ? "stated" : "open")
-          : by.stated ? "stated" : "proved";
-  }
-
-  function validate(g) {
-    if (!g || typeof g !== "object") throw new Error("Not a JSON object.");
-    ["nodes", "groups", "edges"].forEach(function (k) {
-      if (!Array.isArray(g[k])) throw new Error('Missing the "' + k + '" array. This does not look like `tracker graph` output.');
-    });
-    if (!g.nodes.length) throw new Error("The graph has no nodes.");
-    var n = g.nodes[0];
-    if (typeof n.id !== "string" || typeof n.group !== "string")
-      throw new Error('Nodes need "id" and "group" strings.');
-    if (g.edges.length) {
-      var e = g.edges[0];
-      if (typeof e.from !== "string" || typeof e.to !== "string")
-        throw new Error('Edges need "from" and "to" strings.');
-    }
-    return true;
-  }
-
-  /* ================================================================
-     base: the group tree, the declaration graph, the module rollup
-     ================================================================ */
-  function buildBase(g) {
-    validate(g);
-
-    /* ---- the tree of groups ------------------------------------- */
-    var gidx = {}, T = [];
-    function addGroup(rec) {
-      rec.i = T.length;
-      gidx[rec.name] = rec.i;
-      T.push(rec);
-      return rec.i;
-    }
-    function blank(name, parent, desc, done, ready, implied) {
-      return {
-        i: -1, name: name, label: lastSeg(name, "/"), short: name,
-        parentName: parent || null, parent: null, kids: [], level: 0,
-        decls: [], subDecls: [], byState: zeroStates(), state: "open",
-        desc: desc || "", done: !!done, ready: !!ready, topic: -1, hue: 0,
-        implied: !!implied
-      };
-    }
-    g.groups.forEach(function (x) {
-      if (gidx[x.name] === undefined) addGroup(blank(x.name, x.parent, x.desc, x.done, x.ready, false));
-    });
-    /* a node may name a group the plan does not list; it still needs a home */
-    g.nodes.forEach(function (n) {
-      if (gidx[n.group] === undefined) addGroup(blank(n.group, null, "", false, false, true));
-    });
-    T.forEach(function (t) {
-      var p = t.parentName != null ? gidx[t.parentName] : undefined;
-      t.parent = (p === undefined || p === t.i) ? null : p;
-    });
-    /* a malformed plan could name a parent cycle; cut it rather than hang */
-    T.forEach(function (t) {
-      var seen = {}, cur = t.i;
-      while (T[cur].parent !== null) {
-        if (seen[cur]) { T[cur].parent = null; break; }
-        seen[cur] = 1; cur = T[cur].parent;
-      }
-    });
-    T.forEach(function (t) { if (t.parent !== null) T[t.parent].kids.push(t.i); });
-    var treeRoots = [];
-    T.forEach(function (t) { if (t.parent === null) treeRoots.push(t.i); });
-    (function setLevels() {
-      var stack = treeRoots.slice();
-      treeRoots.forEach(function (r) { T[r].level = 0; });
-      while (stack.length) {
-        var u = stack.pop();
-        T[u].kids.forEach(function (k) { T[k].level = T[u].level + 1; stack.push(k); });
-      }
-    })();
-    T.forEach(function (t) {
-      t.isModule = t.kids.length === 0;
-      t.kids.sort(function (a, b) { return T[a].name < T[b].name ? -1 : 1; });
-    });
-    /* the topic is the ancestor just below the root: the level at which colour is legible */
-    T.forEach(function (t) {
-      var cur = t.i;
-      while (T[cur].level > 1) cur = T[cur].parent;
-      t.topic = cur;
-      var r = t.i;
-      while (T[r].parent !== null) r = T[r].parent;
-      t.root = r;
-    });
-
-    var roots = treeRoots.map(function (r) { return T[r].name; });
-    var rootPrefix = roots.length === 1 ? roots[0] + "/" : null;
-    var shortOf = function (name) {
-      return rootPrefix && name.indexOf(rootPrefix) === 0 ? name.slice(rootPrefix.length) : name;
-    };
-    T.forEach(function (t) { t.short = shortOf(t.name); });
-
-    /* ---- the declarations --------------------------------------- */
-    var D = [], didx = {}, states = zeroStates(), kinds = {};
-    g.nodes.forEach(function (n) {
-      var st = n.wrong ? "wrong" : normState(n.state);
-      var kd = n.kind === "definition" ? "definition" : (n.kind === "theorem" ? "theorem" : (n.kind || "other"));
-      var d = {
-        i: D.length, id: n.id, label: lastSeg(n.id, "."), g: gidx[n.group],
-        kind: kd, state: st, desc: n.desc || "", source: n.source || null,
-        wrong: n.wrong || null, deprecated: n.deprecated || null, path: null
-      };
-      didx[n.id] = d.i;
-      D.push(d);
-      states[st]++;
-      kinds[kd] = (kinds[kd] || 0) + 1;
-    });
-    /* attach each declaration to its group and to every ancestor of it */
-    D.forEach(function (d) {
-      var cur = d.g, path = [];
-      T[cur].decls.push(d.i);
-      while (cur !== null) { path.push(cur); T[cur].subDecls.push(d.i); T[cur].byState[d.state]++; cur = T[cur].parent; }
-      path.reverse();
-      d.path = path;                              /* root … own group */
-    });
-    T.forEach(function (t) { t.sub = t.subDecls.length; t.state = rollState(t.byState); });
-
-    /* ---- the declaration graph ---------------------------------- */
-    var DE = [], dout = [], din = [], dangling = 0;
-    for (var q = 0; q < D.length; q++) { dout.push([]); din.push([]); }
-    g.edges.forEach(function (e) {
-      var u = didx[e.from], v = didx[e.to];
-      if (u === undefined || v === undefined || u === v) { dangling++; return; }
-      DE.push([u, v, (e.real ? 1 : 0) | (e.suggested ? 2 : 0)]);
-      dout[u].push(v); din[v].push(u);
-    });
-
-    /* ---- topics: the colour dimension of the explorer ------------
-       The root decides the family and the topic decides the shade inside it, so that
-       the first thing colour says is which library a node belongs to — a backbone and
-       its surfaces read apart at a glance — and the second is which area of it.
-       A project with one root gets the whole wheel, as it should. */
-    var bySize = function (a, b) { return T[b].sub - T[a].sub || (T[a].name < T[b].name ? -1 : 1); };
-    var liveRoots = treeRoots.filter(function (r) { return T[r].sub; }).sort(bySize);
-    var band = liveRoots.length > 1 ? (360 / liveRoots.length) * 0.44 : 320;
-    var topics = [];
-    liveRoots.forEach(function (r, ri) {
-      var base = Math.round((205 + ri * 360 / liveRoots.length) % 360);
-      T[r].hue = base; T[r].tone = 0; T[r].topicSlot = 0;
-      var kids = [];
-      T.forEach(function (t) { if (t.sub && t.root === r && t.topic === t.i && t.level === 1) kids.push(t.i); });
-      if (!kids.length) { topics.push(r); return; }   /* a root that holds results itself */
-      kids.sort(bySize);
-      var m = kids.length, step = m > 1 ? Math.min(17, band / (m - 1)) : 0;
-      kids.forEach(function (ti, k) {
-        T[ti].hue = Math.round((base + (k - (m - 1) / 2) * step + 360) % 360);
-        T[ti].tone = k % 3;
-        T[ti].topicSlot = k;
-        topics.push(ti);
-      });
-    });
-    T.forEach(function (t) {
-      var src = T[t.topic];
-      t.hue = src.hue || 0; t.tone = src.tone || 0; t.topicSlot = src.topicSlot || 0;
-    });
-
-    var modules = 0;
-    T.forEach(function (t) { if (t.decls.length) modules++; });
-
+  function blank(name, parent, desc, done, ready, implied) {
     return {
-      tree: T, gidx: gidx, treeRoots: treeRoots, topics: topics, roots: roots,
-      decl: D, didx: didx, dedges: DE, dout: dout, din: din,
-      meta: {
-        nodes: D.length, groups: g.groups.length, modules: modules,
-        edges: g.edges.length, dangling: dangling,
-        states: states, kinds: kinds,
-        rootDesc: (T[treeRoots[0]] || {}).desc || ""
-      }
+      i: -1, name, label: lastSeg(name, "/"), short: name,
+      parentName: parent || null, parent: null, kids: [], level: 0,
+      decls: [], subDecls: [], byState: zeroStates(), state: "open",
+      desc: desc || "", done: !!done, ready: !!ready, topic: -1, hue: 0,
+      implied: !!implied
     };
   }
-  /* ================================================================
-     layoutCore — the layered layout of any DAG, up to ordering.
-     pairs: [a, b] means "a depends on b", so a is drawn above b.
-     ================================================================ */
-  function layoutCore(R, pairs, opt) {
-    opt = opt || {};
-    if (!R) {
-      return {
-        R: 0, L: 0, N2: 0, layer: new Int32Array(0), lay: [], real: [], rows: [],
-        rank: new Int32Array(0), red: [], back: [], chains: [], up: [], dn: [],
-        topo: [], crossings: 0, routed: 0
-      };
+  g.groups.forEach((x) => {
+    if (gidx[x.name] === undefined) addGroup(blank(x.name, x.parent, x.desc, x.done, x.ready, false));
+  });
+  /* a node may name a group the plan does not list; it still needs a home */
+  g.nodes.forEach((n) => {
+    if (gidx[n.group] === undefined) addGroup(blank(n.group, null, "", false, false, true));
+  });
+  T.forEach((t) => {
+    const p = t.parentName != null ? gidx[t.parentName] : undefined;
+    t.parent = (p === undefined || p === t.i) ? null : p;
+  });
+  /* a malformed plan could name a parent cycle; cut it rather than hang */
+  T.forEach((t) => {
+    const seen = new Set();
+    let cur = t.i;
+    while (T[cur].parent !== null) {
+      if (seen.has(cur)) { T[cur].parent = null; break; }
+      seen.add(cur); cur = T[cur].parent;
     }
-    var succ = [], pred = [];
-    for (var i = 0; i < R; i++) { succ.push(new Set()); pred.push(new Set()); }
-    pairs.forEach(function (e) {
-      if (e[0] === e[1]) return;
-      succ[e[0]].add(e[1]); pred[e[1]].add(e[0]);
-    });
+  });
+  T.forEach((t) => { if (t.parent !== null) T[t.parent].kids.push(t.i); });
+  const treeRoots = [];
+  T.forEach((t) => { if (t.parent === null) treeRoots.push(t.i); });
 
-    /* --- break cycles: greedy feedback arc set (Eades, Lin & Smyth) --- */
-    var left = [], right = [], removed = new Set(), linear;
-    (function () {
-      var alive = new Uint8Array(R).fill(1), remaining = R;
-      var outd = new Int32Array(R), ind2 = new Int32Array(R);
-      for (var u = 0; u < R; u++) { outd[u] = succ[u].size; ind2[u] = pred[u].size; }
-      var kill = function (u) {
-        alive[u] = 0; remaining--;
-        succ[u].forEach(function (v) { if (alive[v]) ind2[v]--; });
-        pred[u].forEach(function (v) { if (alive[v]) outd[v]--; });
-      };
-      while (remaining > 0) {
-        var moved = true;
-        while (moved) {
-          moved = false;
-          for (var s = 0; s < R; s++) if (alive[s] && outd[s] === 0) { right.unshift(s); kill(s); moved = true; }
-          for (var t = 0; t < R; t++) if (alive[t] && ind2[t] === 0) { left.push(t); kill(t); moved = true; }
-        }
-        if (remaining > 0) {
-          var best = -1, bd = -Infinity;
-          for (var w = 0; w < R; w++) if (alive[w] && outd[w] - ind2[w] > bd) { bd = outd[w] - ind2[w]; best = w; }
-          left.push(best); kill(best);
-        }
-      }
-      linear = left.concat(right).reverse();   /* base nodes first, dependents after */
-    })();
-    var lrank = new Int32Array(R);
-    linear.forEach(function (u, i) { lrank[u] = i; });
-    var back = [];
-    for (var u2 = 0; u2 < R; u2++) succ[u2].forEach(function (v) {
-      /* u -> v means u rests on v, so v should come earlier in the linear order */
-      if (lrank[v] > lrank[u2]) { back.push([u2, v]); removed.add(u2 * KEY + v); }
-    });
-    var dag = [];
-    for (var u3 = 0; u3 < R; u3++) succ[u3].forEach(function (v) { if (!removed.has(u3 * KEY + v)) dag.push([u3, v]); });
+  /* the level of a group is its depth below its root */
+  const stack = treeRoots.slice();
+  treeRoots.forEach((r) => { T[r].level = 0; });
+  while (stack.length) {
+    const u = stack.pop();
+    T[u].kids.forEach((k) => { T[k].level = T[u].level + 1; stack.push(k); });
+  }
 
-    var dsucc = [], dpred = [];
-    for (var z = 0; z < R; z++) { dsucc.push([]); dpred.push([]); }
-    dag.forEach(function (e) { dsucc[e[0]].push(e[1]); dpred[e[1]].push(e[0]); });
+  T.forEach((t) => {
+    t.isModule = t.kids.length === 0;
+    t.kids.sort((a, b) => (T[a].name < T[b].name ? -1 : 1));
+  });
+  /* the topic is the ancestor just below the root: the level at which colour is legible */
+  T.forEach((t) => {
+    let cur = t.i;
+    while (T[cur].level > 1) cur = T[cur].parent;
+    t.topic = cur;
+    let r = t.i;
+    while (T[r].parent !== null) r = T[r].parent;
+    t.root = r;
+  });
 
-    /* --- topological order of the acyclic remainder: sinks first --- */
-    var indeg = new Int32Array(R);
-    dag.forEach(function (e) { indeg[e[0]]++; });
-    var q = [], topo = [], ind3 = Int32Array.from(indeg);
-    for (var a1 = 0; a1 < R; a1++) if (!indeg[a1]) q.push(a1);
-    while (q.length) {
-      var n1 = q.pop(); topo.push(n1);
-      dpred[n1].forEach(function (w) { if (--ind3[w] === 0) q.push(w); });
-    }
+  const roots = treeRoots.map((r) => T[r].name);
+  const rootPrefix = roots.length === 1 ? roots[0] + "/" : null;
+  const shortOf = (name) =>
+    (rootPrefix && name.startsWith(rootPrefix) ? name.slice(rootPrefix.length) : name);
+  T.forEach((t) => { t.short = shortOf(t.name); });
 
-    /* --- layering: longest path from the bottom --- */
-    var layer = new Int32Array(R);
-    topo.forEach(function (u) {
-      var mx = 0;
-      dsucc[u].forEach(function (v) { if (layer[v] + 1 > mx) mx = layer[v] + 1; });
-      layer[u] = mx;
-    });
-    var L = 0;
-    for (var g1 = 0; g1 < R; g1++) if (layer[g1] > L) L = layer[g1];
-
-    /* --- transitive reduction, over bitsets so it scales past a few hundred nodes --- */
-    var WS = (R + 31) >> 5;
-    var reach = new Uint32Array(R * WS);
-    topo.forEach(function (u) {
-      var ub = u * WS;
-      for (var i2 = 0; i2 < dsucc[u].length; i2++) {
-        var v = dsucc[u][i2], vb = v * WS;
-        reach[ub + (v >> 5)] |= (1 << (v & 31));
-        for (var w2 = 0; w2 < WS; w2++) reach[ub + w2] |= reach[vb + w2];
-      }
-    });
-    var red = [];
-    dag.forEach(function (e) {
-      var u = e[0], v = e[1], dup = false;
-      for (var i3 = 0; i3 < dsucc[u].length; i3++) {
-        var w = dsucc[u][i3];
-        if (w !== v && (reach[w * WS + (v >> 5)] & (1 << (v & 31)))) { dup = true; break; }
-      }
-      if (!dup) red.push([u, v]);
-    });
-    reach = null;
-
-    /* --- slide each node within its slack to shorten the essential edges --- */
-    var rdn = [], rup = [];
-    for (var y = 0; y < R; y++) { rdn.push([]); rup.push([]); }
-    red.forEach(function (e) { rdn[e[0]].push(e[1]); rup[e[1]].push(e[0]); });
-    for (var it0 = 0; it0 < 40; it0++) {
-      var moved2 = 0;
-      for (var ti = 0; ti < topo.length; ti++) {
-        var u4 = topo[ti], lo = 0, hi = Infinity;
-        rdn[u4].forEach(function (v) { if (layer[v] + 1 > lo) lo = layer[v] + 1; });
-        rup[u4].forEach(function (w) { if (layer[w] - 1 < hi) hi = layer[w] - 1; });
-        if (hi === Infinity) hi = L;
-        if (hi < lo) hi = lo;
-        var bestL = layer[u4], bestC = Infinity;
-        for (var l2 = lo; l2 <= hi; l2++) {
-          var c2 = 0;
-          rdn[u4].forEach(function (v) { c2 += l2 - layer[v]; });
-          rup[u4].forEach(function (w) { c2 += layer[w] - l2; });
-          if (c2 < bestC) { bestC = c2; bestL = l2; }
-        }
-        if (bestL !== layer[u4]) { layer[u4] = bestL; moved2++; }
-      }
-      if (!moved2) break;
-    }
-
-    /* --- proper graph: long edges routed through invisible nodes --- */
-    var lay = Array.prototype.slice.call(layer), real = [], chains = [];
-    for (var r1 = 0; r1 < R; r1++) real.push(true);
-    red.forEach(function (e) {
-      /* the chain runs downwards, from the dependent to what it rests on, so the
-         routing nodes are laid out in descending layers and every hop is one layer */
-      var ch = [e[0]];
-      for (var l3 = lay[e[0]] - 1; l3 > lay[e[1]]; l3--) { ch.push(lay.length); lay.push(l3); real.push(false); }
-      ch.push(e[1]);
-      chains.push(ch);
-    });
-    var N2 = lay.length;
-    var up = [], dn = [];
-    for (var q1 = 0; q1 < N2; q1++) { up.push([]); dn.push([]); }
-    chains.forEach(function (ch) {
-      for (var i4 = 0; i4 < ch.length - 1; i4++) { dn[ch[i4]].push(ch[i4 + 1]); up[ch[i4 + 1]].push(ch[i4]); }
-    });
-
-    /* --- ordering within each layer --- */
-    var rows = [];
-    for (var l4 = 0; l4 <= L; l4++) rows.push([]);
-    var nameOf = opt.nameOf || function (i) { return String(i); };
-    var byName = [];
-    for (var s1 = 0; s1 < R; s1++) byName.push(s1);
-    byName.sort(function (a, b) { return nameOf(a) < nameOf(b) ? -1 : 1; });
-    var SEEDS = [byName, topo.slice(), linear.slice()];
-    var applySeed = function (seq) {
-      for (var z2 = 0; z2 <= L; z2++) rows[z2] = [];
-      seq.forEach(function (u) { if (u < R) rows[lay[u]].push(u); });
-      for (var d1 = R; d1 < N2; d1++) rows[lay[d1]].push(d1);
+  /* ---- the declarations --------------------------------------- */
+  const D = [], didx = {}, states = zeroStates(), kinds = {};
+  g.nodes.forEach((n) => {
+    const st = n.wrong ? "wrong" : normState(n.state);
+    const kd = n.kind === "definition" ? "definition" : (n.kind === "theorem" ? "theorem" : (n.kind || "other"));
+    const d = {
+      i: D.length, id: n.id, label: lastSeg(n.id, "."), g: gidx[n.group],
+      kind: kd, state: st, desc: n.desc || "", source: n.source || null,
+      wrong: n.wrong || null, deprecated: n.deprecated || null, path: null
     };
-    var rank = new Int32Array(N2);
-    var reindex = function () { rows.forEach(function (r) { r.forEach(function (u, i) { rank[u] = i; }); }); };
+    didx[n.id] = d.i;
+    D.push(d);
+    states[st]++;
+    kinds[kd] = (kinds[kd] || 0) + 1;
+  });
+  /* attach each declaration to its group and to every ancestor of it */
+  D.forEach((d) => {
+    let cur = d.g;
+    const path = [];
+    T[cur].decls.push(d.i);
+    while (cur !== null) { path.push(cur); T[cur].subDecls.push(d.i); T[cur].byState[d.state]++; cur = T[cur].parent; }
+    path.reverse();
+    d.path = path;                              /* root … own group */
+  });
+  T.forEach((t) => { t.sub = t.subDecls.length; t.state = rollState(t.byState); });
 
-    /* bilayer crossings by Barth, Jünger and Mutzel: sort the endpoints, then count
-       inversions with an accumulator tree, which is what lets a big layer stay cheap */
-    var biCross = function (l) {
-      if (l < 0 || l >= L) return 0;
-      var south = rows[l], q2 = rows[l + 1].length;
-      if (!q2) return 0;
-      var seq = [];
-      for (var i5 = 0; i5 < south.length; i5++) {
-        var nb = up[south[i5]];
-        if (!nb.length) continue;
-        var tmp = [];
-        for (var j5 = 0; j5 < nb.length; j5++) tmp.push(rank[nb[j5]]);
-        tmp.sort(function (a, b) { return a - b; });
-        for (var k5 = 0; k5 < tmp.length; k5++) seq.push(tmp[k5]);
+  /* ---- the declaration graph ---------------------------------- */
+  const DE = [], dout = [], din = [];
+  let dangling = 0;
+  for (let q = 0; q < D.length; q++) { dout.push([]); din.push([]); }
+  g.edges.forEach((e) => {
+    const u = didx[e.from], v = didx[e.to];
+    if (u === undefined || v === undefined || u === v) { dangling++; return; }
+    DE.push([u, v, (e.real ? 1 : 0) | (e.suggested ? 2 : 0)]);
+    dout[u].push(v); din[v].push(u);
+  });
+
+  /* ---- topics: the colour dimension of the explorer ------------
+     The root decides the family and the topic decides the shade inside it, so that
+     the first thing colour says is which library a node belongs to — a backbone and
+     its surfaces read apart at a glance — and the second is which area of it.
+     A project with one root gets the whole wheel, as it should. */
+  const bySize = (a, b) => T[b].sub - T[a].sub || (T[a].name < T[b].name ? -1 : 1);
+  const liveRoots = treeRoots.filter((r) => T[r].sub).sort(bySize);
+  const band = liveRoots.length > 1 ? (360 / liveRoots.length) * 0.44 : 320;
+  const topics = [];
+  liveRoots.forEach((r, ri) => {
+    const base = Math.round((205 + ri * 360 / liveRoots.length) % 360);
+    T[r].hue = base; T[r].tone = 0; T[r].topicSlot = 0;
+    const kids = [];
+    T.forEach((t) => { if (t.sub && t.root === r && t.topic === t.i && t.level === 1) kids.push(t.i); });
+    if (!kids.length) { topics.push(r); return; }   /* a root that holds results itself */
+    kids.sort(bySize);
+    const m = kids.length, step = m > 1 ? Math.min(17, band / (m - 1)) : 0;
+    kids.forEach((ti, k) => {
+      T[ti].hue = Math.round((base + (k - (m - 1) / 2) * step + 360) % 360);
+      T[ti].tone = k % 3;
+      T[ti].topicSlot = k;
+      topics.push(ti);
+    });
+  });
+  T.forEach((t) => {
+    const src = T[t.topic];
+    t.hue = src.hue || 0; t.tone = src.tone || 0; t.topicSlot = src.topicSlot || 0;
+  });
+
+  const modules = T.filter((t) => t.decls.length).length;
+
+  return {
+    tree: T, gidx, treeRoots, topics, roots,
+    decl: D, didx, dedges: DE, dout, din,
+    meta: {
+      nodes: D.length, groups: g.groups.length, modules,
+      edges: g.edges.length, dangling,
+      states, kinds,
+      rootDesc: (T[treeRoots[0]] || {}).desc || ""
+    }
+  };
+}
+/* ================================================================
+   layoutCore — the layered layout of any DAG, up to ordering.
+   pairs: [a, b] means "a depends on b", so a is drawn above b.
+   ================================================================ */
+function layoutCore(R, pairs, opt) {
+  opt = opt || {};
+  if (!R) {
+    return {
+      R: 0, L: 0, N2: 0, layer: new Int32Array(0), lay: [], real: [], rows: [],
+      rank: new Int32Array(0), red: [], back: [], chains: [], up: [], dn: [],
+      topo: [], crossings: 0, routed: 0
+    };
+  }
+  const succ = [], pred = [];
+  for (let i = 0; i < R; i++) { succ.push(new Set()); pred.push(new Set()); }
+  pairs.forEach(([a, b]) => {
+    if (a === b) return;
+    succ[a].add(b); pred[b].add(a);
+  });
+
+  /* --- break cycles: greedy feedback arc set (Eades, Lin & Smyth) --- */
+  function feedbackArcOrder() {
+    const left = [], right = [];
+    const alive = new Uint8Array(R).fill(1);
+    const outd = new Int32Array(R), ind = new Int32Array(R);
+    let remaining = R;
+    for (let u = 0; u < R; u++) { outd[u] = succ[u].size; ind[u] = pred[u].size; }
+    const kill = (u) => {
+      alive[u] = 0; remaining--;
+      succ[u].forEach((v) => { if (alive[v]) ind[v]--; });
+      pred[u].forEach((v) => { if (alive[v]) outd[v]--; });
+    };
+    while (remaining > 0) {
+      let moved = true;
+      while (moved) {
+        moved = false;
+        for (let s = 0; s < R; s++) if (alive[s] && outd[s] === 0) { right.unshift(s); kill(s); moved = true; }
+        for (let t = 0; t < R; t++) if (alive[t] && ind[t] === 0) { left.push(t); kill(t); moved = true; }
       }
-      if (seq.length < 2) return 0;
-      var first = 1;
-      while (first < q2) first *= 2;
-      var tree = new Int32Array(2 * first - 1);
-      first -= 1;
-      var cross = 0;
-      for (var k6 = 0; k6 < seq.length; k6++) {
-        var idx = seq[k6] + first;
+      if (remaining > 0) {
+        let best = -1, bd = -Infinity;
+        for (let w = 0; w < R; w++) if (alive[w] && outd[w] - ind[w] > bd) { bd = outd[w] - ind[w]; best = w; }
+        left.push(best); kill(best);
+      }
+    }
+    return left.concat(right).reverse();
+  }
+  const linear = feedbackArcOrder();       /* base nodes first, dependents after */
+
+  const lrank = new Int32Array(R);
+  linear.forEach((u, i) => { lrank[u] = i; });
+  const removed = new Set(), back = [];
+  for (let u = 0; u < R; u++) succ[u].forEach((v) => {
+    /* u -> v means u rests on v, so v should come earlier in the linear order */
+    if (lrank[v] > lrank[u]) { back.push([u, v]); removed.add(u * KEY + v); }
+  });
+  const dag = [];
+  for (let u = 0; u < R; u++) succ[u].forEach((v) => { if (!removed.has(u * KEY + v)) dag.push([u, v]); });
+
+  const dsucc = [], dpred = [];
+  for (let i = 0; i < R; i++) { dsucc.push([]); dpred.push([]); }
+  dag.forEach(([u, v]) => { dsucc[u].push(v); dpred[v].push(u); });
+
+  /* --- topological order of the acyclic remainder: sinks first --- */
+  const indeg = new Int32Array(R);
+  dag.forEach(([u]) => { indeg[u]++; });
+  const q = [], topo = [], ind = Int32Array.from(indeg);
+  for (let i = 0; i < R; i++) if (!indeg[i]) q.push(i);
+  while (q.length) {
+    const u = q.pop();
+    topo.push(u);
+    dpred[u].forEach((w) => { if (--ind[w] === 0) q.push(w); });
+  }
+
+  /* --- layering: longest path from the bottom --- */
+  const layer = new Int32Array(R);
+  topo.forEach((u) => {
+    let mx = 0;
+    dsucc[u].forEach((v) => { if (layer[v] + 1 > mx) mx = layer[v] + 1; });
+    layer[u] = mx;
+  });
+  let L = 0;
+  for (let i = 0; i < R; i++) if (layer[i] > L) L = layer[i];
+
+  /* --- transitive reduction, over bitsets so it scales past a few hundred nodes --- */
+  const WS = (R + 31) >> 5;
+  let reach = new Uint32Array(R * WS);
+  topo.forEach((u) => {
+    const ub = u * WS;
+    for (let i = 0; i < dsucc[u].length; i++) {
+      const v = dsucc[u][i], vb = v * WS;
+      reach[ub + (v >> 5)] |= (1 << (v & 31));
+      for (let w = 0; w < WS; w++) reach[ub + w] |= reach[vb + w];
+    }
+  });
+  const red = [];
+  dag.forEach(([u, v]) => {
+    let dup = false;
+    for (let i = 0; i < dsucc[u].length; i++) {
+      const w = dsucc[u][i];
+      if (w !== v && (reach[w * WS + (v >> 5)] & (1 << (v & 31)))) { dup = true; break; }
+    }
+    if (!dup) red.push([u, v]);
+  });
+  reach = null;
+
+  /* --- slide each node within its slack to shorten the essential edges --- */
+  const rdn = [], rup = [];
+  for (let i = 0; i < R; i++) { rdn.push([]); rup.push([]); }
+  red.forEach(([a, b]) => { rdn[a].push(b); rup[b].push(a); });
+  for (let it = 0; it < 40; it++) {
+    let moved = 0;
+    for (const u of topo) {
+      let lo = 0, hi = Infinity;
+      rdn[u].forEach((v) => { if (layer[v] + 1 > lo) lo = layer[v] + 1; });
+      rup[u].forEach((w) => { if (layer[w] - 1 < hi) hi = layer[w] - 1; });
+      if (hi === Infinity) hi = L;
+      if (hi < lo) hi = lo;
+      let bestL = layer[u], bestC = Infinity;
+      for (let l = lo; l <= hi; l++) {
+        let c = 0;
+        rdn[u].forEach((v) => { c += l - layer[v]; });
+        rup[u].forEach((w) => { c += layer[w] - l; });
+        if (c < bestC) { bestC = c; bestL = l; }
+      }
+      if (bestL !== layer[u]) { layer[u] = bestL; moved++; }
+    }
+    if (!moved) break;
+  }
+
+  /* --- proper graph: long edges routed through invisible nodes --- */
+  const lay = Array.from(layer), real = [], chains = [];
+  for (let i = 0; i < R; i++) real.push(true);
+  red.forEach(([a, b]) => {
+    /* the chain runs downwards, from the dependent to what it rests on, so the
+       routing nodes are laid out in descending layers and every hop is one layer */
+    const ch = [a];
+    for (let l = lay[a] - 1; l > lay[b]; l--) { ch.push(lay.length); lay.push(l); real.push(false); }
+    ch.push(b);
+    chains.push(ch);
+  });
+  const N2 = lay.length;
+  const up = [], dn = [];
+  for (let i = 0; i < N2; i++) { up.push([]); dn.push([]); }
+  chains.forEach((ch) => {
+    for (let i = 0; i < ch.length - 1; i++) { dn[ch[i]].push(ch[i + 1]); up[ch[i + 1]].push(ch[i]); }
+  });
+
+  /* --- ordering within each layer --- */
+  const rows = [];
+  for (let l = 0; l <= L; l++) rows.push([]);
+  const nameOf = opt.nameOf || ((i) => String(i));
+  const byName = [];
+  for (let i = 0; i < R; i++) byName.push(i);
+  byName.sort((a, b) => (nameOf(a) < nameOf(b) ? -1 : 1));
+  const SEEDS = [byName, topo.slice(), linear.slice()];
+  const applySeed = (seq) => {
+    for (let l = 0; l <= L; l++) rows[l] = [];
+    seq.forEach((u) => { if (u < R) rows[lay[u]].push(u); });
+    for (let d = R; d < N2; d++) rows[lay[d]].push(d);
+  };
+  const rank = new Int32Array(N2);
+  const reindex = () => { rows.forEach((r) => { r.forEach((u, i) => { rank[u] = i; }); }); };
+
+  /* bilayer crossings by Barth, Jünger and Mutzel: sort the endpoints, then count
+     inversions with an accumulator tree, which is what lets a big layer stay cheap */
+  const biCross = (l) => {
+    if (l < 0 || l >= L) return 0;
+    const south = rows[l], northN = rows[l + 1].length;
+    if (!northN) return 0;
+    const seq = [];
+    for (const s of south) {
+      const nb = up[s];
+      if (!nb.length) continue;
+      const tmp = nb.map((v) => rank[v]).sort((a, b) => a - b);
+      for (const r of tmp) seq.push(r);
+    }
+    if (seq.length < 2) return 0;
+    let first = 1;
+    while (first < northN) first *= 2;
+    const tree = new Int32Array(2 * first - 1);
+    first -= 1;
+    let cross = 0;
+    for (const s of seq) {
+      let idx = s + first;
+      tree[idx]++;
+      while (idx > 0) {
+        if (idx % 2) cross += tree[idx + 1];
+        idx = (idx - 1) >> 1;
         tree[idx]++;
-        while (idx > 0) {
-          if (idx % 2) cross += tree[idx + 1];
-          idx = (idx - 1) >> 1;
-          tree[idx]++;
-        }
       }
-      return cross;
-    };
-    var total = function () { var s = 0; for (var l5 = 0; l5 < L; l5++) s += biCross(l5); return s; };
-    var med = function (u, dir) {
-      var nb = dir ? up[u] : dn[u];
-      if (!nb.length) return -1;
-      var arr = nb.map(function (v) { return rank[v]; }).sort(function (a, b) { return a - b; });
-      var h = arr.length >> 1;
-      return arr.length % 2 ? arr[h] : (arr[h - 1] + arr[h]) / 2;
-    };
-    var wmedian = function (down) {
-      var seq = [];
-      for (var l6 = 0; l6 <= L; l6++) seq.push(l6);
-      if (!down) seq.reverse();
-      seq.forEach(function (li) {
-        var key = new Map();
-        rows[li].forEach(function (u) { var m2 = med(u, !down); key.set(u, m2 < 0 ? rank[u] : m2); });
-        rows[li].sort(function (a, b) { return key.get(a) - key.get(b) || rank[a] - rank[b]; });
-        reindex();
-      });
-    };
-    var pairCross = function (u, v, adj) {
-      var A = adj[u], B = adj[v], c = 0;
-      for (var i6 = 0; i6 < A.length; i6++) for (var j6 = 0; j6 < B.length; j6++)
-        if (rank[A[i6]] > rank[B[j6]]) c++;
-      return c;
-    };
-    var transpose = function () {
-      var improved = true, guard = 0;
-      while (improved && guard++ < 30) {
-        improved = false;
-        for (var li = 0; li <= L; li++) {
-          var row = rows[li];
-          for (var i7 = 0; i7 + 1 < row.length; i7++) {
-            var u = row[i7], v = row[i7 + 1];
-            var before = pairCross(u, v, up) + pairCross(u, v, dn);
-            var after = pairCross(v, u, up) + pairCross(v, u, dn);
-            if (after < before) {
-              row[i7] = v; row[i7 + 1] = u;
-              rank[v] = i7; rank[u] = i7 + 1;
-              improved = true;
-            }
+    }
+    return cross;
+  };
+  const total = () => {
+    let s = 0;
+    for (let l = 0; l < L; l++) s += biCross(l);
+    return s;
+  };
+  const med = (u, dir) => {
+    const nb = dir ? up[u] : dn[u];
+    if (!nb.length) return -1;
+    const arr = nb.map((v) => rank[v]).sort((a, b) => a - b);
+    const h = arr.length >> 1;
+    return arr.length % 2 ? arr[h] : (arr[h - 1] + arr[h]) / 2;
+  };
+  const wmedian = (down) => {
+    const seq = [];
+    for (let l = 0; l <= L; l++) seq.push(l);
+    if (!down) seq.reverse();
+    seq.forEach((li) => {
+      const key = new Map();
+      rows[li].forEach((u) => { const m = med(u, !down); key.set(u, m < 0 ? rank[u] : m); });
+      rows[li].sort((a, b) => key.get(a) - key.get(b) || rank[a] - rank[b]);
+      reindex();
+    });
+  };
+  const pairCross = (u, v, adj) => {
+    const A = adj[u], B = adj[v];
+    let c = 0;
+    for (let i = 0; i < A.length; i++) for (let j = 0; j < B.length; j++)
+      if (rank[A[i]] > rank[B[j]]) c++;
+    return c;
+  };
+  const transpose = () => {
+    let improved = true, guard = 0;
+    while (improved && guard++ < 30) {
+      improved = false;
+      for (let li = 0; li <= L; li++) {
+        const row = rows[li];
+        for (let i = 0; i + 1 < row.length; i++) {
+          const u = row[i], v = row[i + 1];
+          const before = pairCross(u, v, up) + pairCross(u, v, dn);
+          const after = pairCross(v, u, up) + pairCross(v, u, dn);
+          if (after < before) {
+            row[i] = v; row[i + 1] = u;
+            rank[v] = i; rank[u] = i + 1;
+            improved = true;
           }
         }
       }
-    };
-    var ITER = opt.iterations || (N2 > 4000 ? 4 : N2 > 1200 ? 8 : 16);
-    var seeds = opt.seeds === 1 ? [SEEDS[0]] : SEEDS;
-    var best = null, bestC = Infinity;
-    seeds.forEach(function (seq) {
-      applySeed(seq); reindex();
-      var c0 = total();
-      if (c0 < bestC) { bestC = c0; best = rows.map(function (r) { return r.slice(); }); }
-      for (var it = 0; it < ITER; it++) {
-        wmedian(it % 2 === 0);
-        transpose();
-        var c3 = total();
-        if (c3 < bestC) { bestC = c3; best = rows.map(function (r) { return r.slice(); }); }
-      }
-    });
-    for (var l7 = 0; l7 <= L; l7++) rows[l7] = best[l7];
-    reindex();
-
-    return {
-      R: R, L: L, N2: N2, layer: layer, lay: lay, real: real, rows: rows, rank: rank,
-      red: red, back: back, chains: chains, up: up, dn: dn, topo: topo,
-      crossings: bestC, routed: N2 - R
-    };
-  }
-
-  /* --- x by the priority method: routing nodes first, so long edges straighten.
-         halfWidth(i) is in whatever unit the caller wants x back in. --- */
-  function xAssign(core, halfWidth, sep, iterations) {
-    var N2 = core.N2, rows = core.rows, up = core.up, dn = core.dn, real = core.real, L = core.L;
-    var prio = new Int32Array(N2);
-    for (var p1 = 0; p1 < N2; p1++) prio[p1] = real[p1] ? (up[p1].length + dn[p1].length) : 100000;
-    var pos = new Float64Array(N2);
-    var gapOf = function (a, b) { return halfWidth(a) + halfWidth(b) + sep; };
-    rows.forEach(function (r) {
-      var x = 0;
-      r.forEach(function (u, i) {
-        if (i) x += gapOf(r[i - 1], u);
-        pos[u] = x;
-      });
-      var mid = x / 2;
-      r.forEach(function (u) { pos[u] -= mid; });
-    });
-    var medPos = function (arr) {
-      if (!arr.length) return null;
-      var a2 = arr.map(function (v) { return pos[v]; }).sort(function (x, y) { return x - y; });
-      var h2 = a2.length >> 1;
-      return a2.length % 2 ? a2[h2] : (a2[h2 - 1] + a2[h2]) / 2;
-    };
-    var shift = function (row, i, target) {
-      var v = row[i];
-      if (target > pos[v] + 1e-9) {
-        var need = 0, limit = Infinity;
-        for (var j = i + 1; j < row.length; j++) {
-          need += gapOf(row[j - 1], row[j]);
-          if (prio[row[j]] >= prio[v]) { limit = pos[row[j]] - need; break; }
-        }
-        var nx = Math.min(target, limit);
-        if (nx <= pos[v]) return;
-        pos[v] = nx;
-        for (var j2 = i + 1; j2 < row.length; j2++) {
-          var g2 = gapOf(row[j2 - 1], row[j2]);
-          if (pos[row[j2]] < pos[row[j2 - 1]] + g2) pos[row[j2]] = pos[row[j2 - 1]] + g2; else break;
-        }
-      } else if (target < pos[v] - 1e-9) {
-        var need2 = 0, lim2 = -Infinity;
-        for (var j3 = i - 1; j3 >= 0; j3--) {
-          need2 += gapOf(row[j3], row[j3 + 1]);
-          if (prio[row[j3]] >= prio[v]) { lim2 = pos[row[j3]] + need2; break; }
-        }
-        var nx2 = Math.max(target, lim2);
-        if (nx2 >= pos[v]) return;
-        pos[v] = nx2;
-        for (var j4 = i - 1; j4 >= 0; j4--) {
-          var g3 = gapOf(row[j4], row[j4 + 1]);
-          if (pos[row[j4]] > pos[row[j4 + 1]] - g3) pos[row[j4]] = pos[row[j4 + 1]] - g3; else break;
-        }
-      }
-    };
-    var IT = iterations || 16;
-    for (var it2 = 0; it2 < IT; it2++) {
-      var down2 = it2 % 2 === 0;
-      var seq2 = [];
-      for (var l8 = 0; l8 <= L; l8++) seq2.push(l8);
-      if (!down2) seq2.reverse();
-      seq2.forEach(function (li) {
-        var row = rows[li];
-        var byPrio = row.map(function (u, i) { return i; })
-          .sort(function (a, b) { return prio[row[b]] - prio[row[a]]; });
-        byPrio.forEach(function (i) {
-          var v = row[i], ref = down2 ? up[v] : dn[v];
-          var t2 = medPos(ref.length ? ref : (down2 ? dn[v] : up[v]));
-          if (t2 !== null) shift(row, i, t2);
-        });
-      });
     }
-    rows.forEach(function (r) {
-      for (var i8 = 1; i8 < r.length; i8++) {
-        var g4 = gapOf(r[i8 - 1], r[i8]);
-        if (pos[r[i8]] - pos[r[i8 - 1]] < g4) pos[r[i8]] = pos[r[i8 - 1]] + g4;
-      }
-    });
-    return pos;
-  }
+  };
+  const ITER = opt.iterations || (N2 > 4000 ? 4 : N2 > 1200 ? 8 : 16);
+  const seeds = opt.seeds === 1 ? [SEEDS[0]] : SEEDS;
+  let best = null, bestC = Infinity;
+  const keep = (c) => {
+    if (c >= bestC) return;
+    bestC = c;
+    best = rows.map((r) => r.slice());
+  };
+  seeds.forEach((seq) => {
+    applySeed(seq); reindex();
+    keep(total());
+    for (let it = 0; it < ITER; it++) {
+      wmedian(it % 2 === 0);
+      transpose();
+      keep(total());
+    }
+  });
+  for (let l = 0; l <= L; l++) rows[l] = best[l];
+  reindex();
 
-  /* --- the cone around a set of declarations, over the declaration graph --- */
-  function cone(base, seeds, dir, radius) {
-    var out = new Set(), R = (radius == null || radius < 0) ? Infinity : radius;
-    seeds.forEach(function (s) { out.add(s); });
-    var expand = function (adj) {
-      var front = seeds.slice(), step = 0;
-      while (front.length && step < R) {
-        var next = [];
-        front.forEach(function (u) {
-          adj[u].forEach(function (v) { if (!out.has(v)) { out.add(v); next.push(v); } });
-        });
-        front = next; step++;
+  return {
+    R, L, N2, layer, lay, real, rows, rank,
+    red, back, chains, up, dn, topo,
+    crossings: bestC, routed: N2 - R
+  };
+}
+
+/* --- x by the priority method: routing nodes first, so long edges straighten.
+       halfWidth(i) is in whatever unit the caller wants x back in. --- */
+function xAssign(core, halfWidth, sep, iterations) {
+  const { N2, rows, up, dn, real, L } = core;
+  const prio = new Int32Array(N2);
+  for (let i = 0; i < N2; i++) prio[i] = real[i] ? (up[i].length + dn[i].length) : 100000;
+  const pos = new Float64Array(N2);
+  const gapOf = (a, b) => halfWidth(a) + halfWidth(b) + sep;
+  rows.forEach((r) => {
+    let x = 0;
+    r.forEach((u, i) => {
+      if (i) x += gapOf(r[i - 1], u);
+      pos[u] = x;
+    });
+    const mid = x / 2;
+    r.forEach((u) => { pos[u] -= mid; });
+  });
+  const medPos = (arr) => {
+    if (!arr.length) return null;
+    const a = arr.map((v) => pos[v]).sort((x, y) => x - y);
+    const h = a.length >> 1;
+    return a.length % 2 ? a[h] : (a[h - 1] + a[h]) / 2;
+  };
+  /* move one node towards its median, as far as the nodes beyond it will allow,
+     and drag the lower-priority ones along with it */
+  const shift = (row, i, target) => {
+    const v = row[i];
+    if (target > pos[v] + 1e-9) {
+      let need = 0, limit = Infinity;
+      for (let j = i + 1; j < row.length; j++) {
+        need += gapOf(row[j - 1], row[j]);
+        if (prio[row[j]] >= prio[v]) { limit = pos[row[j]] - need; break; }
       }
-    };
-    if (dir !== "up") expand(base.dout);        /* what it rests on */
-    if (dir !== "down") expand(base.din);       /* what rests on it */
-    return out;
+      const nx = Math.min(target, limit);
+      if (nx <= pos[v]) return;
+      pos[v] = nx;
+      for (let j = i + 1; j < row.length; j++) {
+        const g = gapOf(row[j - 1], row[j]);
+        if (pos[row[j]] < pos[row[j - 1]] + g) pos[row[j]] = pos[row[j - 1]] + g; else break;
+      }
+    } else if (target < pos[v] - 1e-9) {
+      let need = 0, limit = -Infinity;
+      for (let j = i - 1; j >= 0; j--) {
+        need += gapOf(row[j], row[j + 1]);
+        if (prio[row[j]] >= prio[v]) { limit = pos[row[j]] + need; break; }
+      }
+      const nx = Math.max(target, limit);
+      if (nx >= pos[v]) return;
+      pos[v] = nx;
+      for (let j = i - 1; j >= 0; j--) {
+        const g = gapOf(row[j], row[j + 1]);
+        if (pos[row[j]] > pos[row[j + 1]] - g) pos[row[j]] = pos[row[j + 1]] - g; else break;
+      }
+    }
+  };
+  const IT = iterations || 16;
+  for (let it = 0; it < IT; it++) {
+    const down = it % 2 === 0;
+    const seq = [];
+    for (let l = 0; l <= L; l++) seq.push(l);
+    if (!down) seq.reverse();
+    seq.forEach((li) => {
+      const row = rows[li];
+      const byPrio = row.map((_, i) => i).sort((a, b) => prio[row[b]] - prio[row[a]]);
+      byPrio.forEach((i) => {
+        const v = row[i], ref = down ? up[v] : dn[v];
+        const t = medPos(ref.length ? ref : (down ? dn[v] : up[v]));
+        if (t !== null) shift(row, i, t);
+      });
+    });
   }
+  rows.forEach((r) => {
+    for (let i = 1; i < r.length; i++) {
+      const g = gapOf(r[i - 1], r[i]);
+      if (pos[r[i]] - pos[r[i - 1]] < g) pos[r[i]] = pos[r[i - 1]] + g;
+    }
+  });
+  return pos;
+}
+
+/* --- the cone around a set of declarations, over the declaration graph --- */
+function cone(base, seeds, dir, radius) {
+  const out = new Set(seeds);
+  const R = (radius == null || radius < 0) ? Infinity : radius;
+  const expand = (adj) => {
+    let front = seeds.slice(), step = 0;
+    while (front.length && step < R) {
+      const next = [];
+      front.forEach((u) => {
+        adj[u].forEach((v) => { if (!out.has(v)) { out.add(v); next.push(v); } });
+      });
+      front = next; step++;
+    }
+  };
+  if (dir !== "up") expand(base.dout);        /* what it rests on */
+  if (dir !== "down") expand(base.din);       /* what rests on it */
+  return out;
+}
 
 export { STATES, KEY, buildBase, layoutCore, xAssign, cone, rollState };
