@@ -87,6 +87,20 @@ export function createCanvas({ svg, viewport, on }) {
     paintHover();
   }
 
+  /* A new colour dimension, or a new theme, changes what every box is painted with
+     but not what is drawn: repaint in place, so the change can ease rather than cut. */
+  function recolour() {
+    S.nodes.forEach((n) => {
+      const g = elOf.get(n.id);
+      if (!g) return;
+      const set = (cls, attr, v) => { for (const c of g.children) if (c.classList.contains(cls)) c.setAttribute(attr, v); };
+      set("ex-fill", "fill", n.expanded ? washOf(n) : fillOf(n));
+      set("ex-prog", "fill", overlay());
+      set(n.expanded ? "ex-cbg" : "ex-box", "stroke", lineOf(n));
+      set("ex-crule", "stroke", lineOf(n));
+    });
+  }
+
   /* one box — or, if it is open, the container it became */
   function drawNode(n) {
     let g;
@@ -530,8 +544,8 @@ export function createCanvas({ svg, viewport, on }) {
     },
     setSelection(ref) { sel = ref; paintFocus(); },
     /* the colours are sampled rather than inherited, so a new dimension — or a new
-       theme — is a redraw */
-    setColour(mode) { colour = mode; if (S) draw(); },
+       theme — has to be painted on */
+    setColour(mode) { colour = mode; if (S) recolour(); },
     setEdges(mode) { svg.classList.toggle("only-essential", mode === "red"); },
     reveal(ref) {
       const n = nodeFor(ref);

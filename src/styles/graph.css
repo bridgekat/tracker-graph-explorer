@@ -39,6 +39,26 @@
 }
 
 /* ---- the drawing ---- */
+/* Every change of colour on the canvas — a hover, a selection, the cone lighting up,
+   another colour dimension, the theme — eases over the same short moment. The look
+   of a thing is set by attributes and variables, and a transition follows the computed
+   value whichever way it was changed. */
+#exSvg {
+  --ex-ease: 160ms ease-out
+}
+
+.ex-node,
+.ex-node>.ex-fill,
+.ex-node>.ex-box,
+.ex-node>.ex-cbg,
+.ex-node>.ex-crule,
+.ex-node>.ex-prog,
+.ex-edge,
+.ex-tog,
+.ex-togi {
+  transition: fill var(--ex-ease), stroke var(--ex-ease), stroke-width var(--ex-ease), opacity var(--ex-ease)
+}
+
 .ex-edge {
   fill: none;
   stroke: var(--edge);
