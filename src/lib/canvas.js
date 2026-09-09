@@ -322,10 +322,12 @@ export function createCanvas({ svg, viewport, on }) {
   }
 
   /* ================= pan and zoom ================= */
+  /* At full precision: the translation is chosen to hold the point under the pointer
+     still through a zoom, and a rounded scale would move that point by the rounding
+     error times its distance from the origin — a visible wobble far from it. */
   function applyTransform() {
     if (!S) return;
-    sceneG.setAttribute("transform",
-      `translate(${r2(Z.x)},${r2(Z.y)}) scale(${Math.round(Z.k * 1000) / 1000})`);
+    sceneG.setAttribute("transform", `translate(${Z.x},${Z.y}) scale(${Z.k})`);
     svg.classList.toggle("far", Z.k < 0.34);
     on.zoom(Z.k);
   }
