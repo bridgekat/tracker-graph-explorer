@@ -850,11 +850,6 @@
     white-space: nowrap
   }
 
-  .ex-status .nm {
-    font-family: var(--mono);
-    color: var(--ink)
-  }
-
   .ex-status .st b {
     color: var(--ink);
     font-variant-numeric: tabular-nums

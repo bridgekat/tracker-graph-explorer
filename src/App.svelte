@@ -183,7 +183,6 @@
           {#if app.status?.warn}
             <span class="warn">{app.status.warn}</span>
           {:else if statusNode}
-            <b class="nm">{statusNode.kind === "group" ? statusNode.short : statusNode.name}</b>
             <span class="st"><b>{fmt(app.status.below)}</b> it rests on</span>
             <span class="st"><b>{fmt(app.status.above)}</b> rest on it</span>
             {#if statusNode.kind === "group"}
