@@ -98,12 +98,6 @@
   stroke-width: 1
 }
 
-.ex-cnum {
-  fill: var(--ink);
-  font: 400 9.5px var(--mono);
-  pointer-events: none
-}
-
 .ex-box {
   stroke-width: 1.1
 }
@@ -117,10 +111,18 @@
   stroke-width: 2.2
 }
 
-.ex-lab {
-  font: 400 11px var(--mono);
+/* What a box writes on itself: its title, and its count. All of it one ink, and none of
+   it in the pointer's way — what is under the pointer is the box. */
+.ex-lab,
+.ex-chead,
+.ex-num,
+.ex-cnum {
   fill: var(--ink);
   pointer-events: none
+}
+
+.ex-lab {
+  font: 400 11px var(--mono)
 }
 
 /* a group's title is a group's title, open or shut */
@@ -129,10 +131,9 @@
   font: 600 11px var(--sans)
 }
 
-.ex-num {
-  font: 400 9.5px var(--mono);
-  fill: var(--ink);
-  pointer-events: none
+.ex-num,
+.ex-cnum {
+  font: 400 9.5px var(--mono)
 }
 
 /* Not every state is a stage of progress. A declaration resting on extra axioms, or one
