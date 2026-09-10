@@ -174,10 +174,7 @@ function buildBase(g) {
 
   return {
     tree: T, treeRoots, decl: D, dedges: DE, dout, din,
-    meta: {
-      nodes: D.length, modules: T.filter((t) => t.decls.length).length,
-      rootDesc: T[treeRoots[0]].desc
-    }
+    meta: { nodes: D.length, modules: T.filter((t) => t.decls.length).length }
   };
 }
 /* ================================================================

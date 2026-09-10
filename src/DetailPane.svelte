@@ -45,10 +45,6 @@
       Pick a box on the canvas, or an entry in the index, to read what it says and what it
       rests on.
     </p>
-    {#if B.meta.rootDesc}
-      <h4 class={H4}>About this plan</h4>
-      <Prose text={B.meta.rootDesc.split(/\n#{2,}\s/)[0]} />
-    {/if}
   {:else if group}
     <div class="mb-2 flex flex-wrap gap-1.5">
       <Badge color="gray">{group.isModule ? "module" : "group"}</Badge>
