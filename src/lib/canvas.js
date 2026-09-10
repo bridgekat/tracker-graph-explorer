@@ -5,6 +5,7 @@
    the pointer moves would cost more than drawing it. Svelte owns the state and the
    chrome; this owns one <svg> and redraws it when told to. */
 import * as SC from "./scene.js";
+import { KEY } from "./derive.js";
 import {
   el, css, fmt, plural, textWidth, ellipsis, kindHue, STATE_LABEL, FLAGGED,
   hueFill, hueLine, hueBar, hueWash,
@@ -40,7 +41,8 @@ export function measure(n) {
     return;
   }
   const font = isGroup ? fonts.group : fonts.decl;
-  const chrome = PAD_W + (isGroup ? NUM_W + TOG_W : 0);
+  /* every box carries its own control, so every box keeps the room for one */
+  const chrome = PAD_W + TOG_W + (isGroup ? NUM_W : 0);
   /* ceil, so the room left for the label is never a fraction of a pixel short of
      what the label actually measured */
   n.w = Math.max(58, Math.min(MAX_W, Math.ceil(textWidth(n.label, font)) + chrome));
@@ -57,7 +59,7 @@ export function createCanvas({ svg, viewport, on }) {
      while one scene is becoming the next, both */
   const camG = el("g", { id: "exScene" });
   svg.appendChild(camG);
-  let coneCache = new Map();
+  let coneCache = new Map(), ownedBy = null;
   let Z = { k: 1, x: 0, y: 0 };
   let sel = null, hover = null;
 
@@ -161,12 +163,10 @@ export function createCanvas({ svg, viewport, on }) {
     /* the outline last, so the bar stops at it rather than runs over it */
     g.appendChild(P.box = el("rect", { class: "ex-box", x: 0, y: 0, rx: RX, fill: "none", stroke: lineOf(n) }));
     g.appendChild(P.lab = el("text", {
-      class: "ex-lab", x: 8, "text-anchor": isGroup ? "start" : "middle",
+      class: "ex-lab", "text-anchor": isGroup ? "start" : "middle",
     }, n.text));
-    if (isGroup) {
-      g.appendChild(P.num = el("text", { class: "ex-num", "text-anchor": "end" }, shortNum(n.count)));
-      g.appendChild(P.tog = toggle(n, P));
-    }
+    if (isGroup) g.appendChild(P.num = el("text", { class: "ex-num", "text-anchor": "end" }, shortNum(n.count)));
+    g.appendChild(P.tog = control(n, P));
     geometry(g, n, n.w, n.h);
   }
 
@@ -179,10 +179,10 @@ export function createCanvas({ svg, viewport, on }) {
       class: "ex-crule", x1: 0, y1: SC.HEAD, y2: SC.HEAD, stroke: lineOf(n), opacity: ".4",
     }));
     g.appendChild(P.box = el("rect", { class: "ex-cbg", x: 0, y: 0, rx: RX_C, fill: "none", stroke: lineOf(n) }));
-    g.appendChild(el("text", { class: "ex-chead", x: 8, y: SC.HEAD - 6.5 },
+    g.appendChild(el("text", { class: "ex-chead", x: TOG_W + 5, y: SC.HEAD - 6.5 },
       ellipsis(n.label, fonts.group, Math.max(20, n.w - NUM_W - TOG_W - 18))));
     g.appendChild(P.num = el("text", { class: "ex-cnum", y: SC.HEAD - 6.5, "text-anchor": "end" }, shortNum(n.count)));
-    g.appendChild(P.tog = toggle(n, P));
+    g.appendChild(P.tog = control(n, P));
     geometry(g, n, n.w, n.h);
   }
 
@@ -202,18 +202,18 @@ export function createCanvas({ svg, viewport, on }) {
     }
     if (P.rule) P.rule.setAttribute("x2", r2(w));
     if (P.lab) {
-      if (n.kind === "decl") P.lab.setAttribute("x", r2(w / 2));
+      /* a group writes its title from the left, after its control; a declaration writes
+         its own in the middle of whatever room the control leaves */
+      P.lab.setAttribute("x", r2(n.kind === "decl" ? TOG_W + (w - TOG_W) / 2 : TOG_W + 5));
       P.lab.setAttribute("y", r2(strip / 2 + 3.6));
     }
     if (P.num) {
-      P.num.setAttribute("x", r2(w - TOG_W - 5));
+      P.num.setAttribute("x", r2(w - 8));
       if (!n.expanded) P.num.setAttribute("y", r2(strip / 2 + 3.5));
     }
     if (P.tog) {
-      P.tog.setAttribute("transform", `translate(${r2(w - TOG_W)},0)`);
       P.togRect.setAttribute("height", r2(strip));
-      const cy = strip / 2, cx = TOG_W / 2;
-      P.togIcon.setAttribute("d", n.expanded ? `M${cx - 3.5},${cy}h7` : `M${cx - 3.5},${cy}h7M${cx},${cy - 3.5}v7`);
+      P.togIcon.setAttribute("d", controlIcon(n, TOG_W / 2, strip / 2));
     }
   }
 
@@ -230,14 +230,33 @@ export function createCanvas({ svg, viewport, on }) {
     return el("rect", { class: "ex-prog", x: 0, y: 0, fill: barOf(n), "clip-path": `url(#${clipId(n)})` });
   }
 
-  /* the one control that opens and closes a node, with a hit area of its own */
-  function toggle(n, P) {
+  /* ---------- the control every box carries ----------
+     One control, in one place — the left of the box, before its title — doing the one
+     thing that box can be opened into: a group into the boxes it holds, a declaration
+     into the neighbourhood it sits in. It is at the left because that is the edge that
+     does not move: opening a group makes it much wider, and a control at the right
+     would travel the whole of that width while you are still looking at it.
+
+     A group's glyph is the ＋ or − of a thing that opens and shuts. A declaration's is
+     the shape of what opening it draws: the node itself, and the two ways out of it.
+     The drawing runs left to right, so what it rests on runs off to its left and what
+     rests on it off to its right, and the glyph points both ways at once. */
+  const controlIcon = (n, cx, cy) =>
+    n.kind === "decl"
+      ? `M${r2(cx - 3.1)},${r2(cy - 2.6)}L${r2(cx - 5.5)},${r2(cy)}L${r2(cx - 3.1)},${r2(cy + 2.6)}`
+        + `M${r2(cx + 3.1)},${r2(cy - 2.6)}L${r2(cx + 5.5)},${r2(cy)}L${r2(cx + 3.1)},${r2(cy + 2.6)}`
+        + `M${r2(cx - 0.85)},${r2(cy)}a.85,.85 0 1,0 1.7,0a.85,.85 0 1,0 -1.7,0`
+      : n.expanded ? `M${r2(cx - 3.5)},${r2(cy)}h7`
+        : `M${r2(cx - 3.5)},${r2(cy)}h7M${r2(cx)},${r2(cy - 3.5)}v7`;
+  function control(n, P) {
     const t = el("g", {
-      class: "ex-toggle", role: "button", "aria-label": (n.expanded ? "Collapse " : "Expand ") + n.name,
+      class: "ex-toggle", role: "button", transform: "translate(0,0)",
+      "aria-label": n.kind === "decl" ? "Draw the neighbourhood of " + n.name
+        : (n.expanded ? "Collapse " : "Expand ") + n.name,
     });
     t.appendChild(P.togRect = el("rect", { class: "ex-tog", x: 0, y: 0, width: TOG_W, rx: 3 }));
     t.appendChild(P.togIcon = el("path", { class: "ex-togi" }));
-    t.__toggle = true;
+    t.__control = true;
     return t;
   }
 
@@ -339,19 +358,40 @@ export function createCanvas({ svg, viewport, on }) {
     }
     return seen;
   }
-  /* An open container has no edges of its own — they belong to the boxes inside it —
-     so its cone is the cone of everything it holds, with its own contents taken back
-     out, which is what makes "rests on" mean the same thing open or shut. */
+  /* which declarations each box stands for: a declaration's box stands for it alone, a
+     shut group's box for every declaration under it, and an open container for none of
+     its own, since its children are standing for all of them */
+  function owned(id) {
+    if (!ownedBy) {
+      ownedBy = S.nodes.map(() => []);
+      S.owner.forEach((b, d) => { if (b >= 0) ownedBy[b].push(d); });
+    }
+    return ownedBy[id];
+  }
+  /* The cone of a box: everything it rests on and everything that rests on it.
+
+     The graph between boxes is not the graph between declarations, and walking the
+     first is not an approximation of walking the second but a different answer. A shut
+     box stands for many declarations at once, so a walk over boxes arrives at one by a
+     declaration that is in the cone and leaves it by a declaration that is not — a
+     path no dependency ever took — and everything past that lights up for nothing. So
+     the cone is followed over what really touches what, and only then mapped onto
+     whatever boxes are on screen.
+
+     An open container holds no declarations its children do not, which is what makes
+     "rests on" mean the same thing open or shut. */
   function coneOf(n) {
     if (coneCache.has(n.id)) return coneCache.get(n.id);
     const inside = new Set(), seeds = [];
     (function walk(x) {
       inside.add(x.id);
-      if (x.children) x.children.forEach(walk); else seeds.push(x.id);
+      owned(x.id).forEach((d) => seeds.push(d));
+      if (x.children) x.children.forEach(walk);
     })(n);
-    const below = reach(S.adj.out, seeds), above = reach(S.adj.in, seeds);
-    inside.forEach((i) => { below.delete(i); above.delete(i); });
-    const r = { below, above, inside };
+    const below = reach(B.dout, seeds), above = reach(B.din, seeds);
+    const seed = new Set(seeds);
+    seed.forEach((d) => { below.delete(d); above.delete(d); });
+    const r = { seed, below, above, inside };
     coneCache.set(n.id, r);
     return r;
   }
@@ -376,11 +416,17 @@ export function createCanvas({ svg, viewport, on }) {
   function paintFocus() {
     if (!S) return;
     const f = nodeFor(sel), c = f && coneOf(f);
-    /* a lit box inside a container needs the container lit too, or it goes with it */
+    /* A declaration in the cone lights whichever box is standing for it, and a lit box
+       inside a container needs the container lit too, or it goes with it. */
     const keep = new Set();
     if (c) {
-      const light = (id) => { for (let p = S.nodes[id]; p; p = p.parent) keep.add(p.id); };
-      c.inside.forEach(light); c.below.forEach(light); c.above.forEach(light);
+      const light = (d) => {
+        const b = S.owner[d];
+        if (b >= 0) for (let p = S.nodes[b]; p; p = p.parent) keep.add(p.id);
+      };
+      for (let p = f; p; p = p.parent) keep.add(p.id);
+      c.inside.forEach((id) => keep.add(id));
+      c.below.forEach(light); c.above.forEach(light);
     }
     svg.classList.toggle("focused", !!f);
     S.nodes.forEach((n) => {
@@ -391,27 +437,30 @@ export function createCanvas({ svg, viewport, on }) {
     });
     /* One drawn line stands in for many real ones, so asking its two ends whether they
        are in the cone lights lines that carry nothing of it. Ask the real relations
-       instead which drawn line they arrived on, and light that one at the strongest
-       claim any of them makes. */
+       instead which drawn line they arrived on, and light that one.
+
+       There are two things a line can carry, and they are the two halves of the cone:
+       `u` rests on `v`, so the line runs within what the focused box rests on, or within
+       what rests on it. Its own dependencies need no case of their own — they are the
+       first step of those chains, and a first step is not a different kind of thing. A
+       line that carries both is going down: that is the half you are reading along. */
     const lit = new Map();
-    if (c) S.fine.forEach((r) => {
-      if (!r.drawn) return;
-      const x = r.a.id, y = r.b.id;
-      let rank;
-      if (c.inside.has(x) !== c.inside.has(y)) rank = 3;                        /* its own */
-      else if ((c.inside.has(x) || c.below.has(x)) && c.below.has(y)) rank = 2; /* under it */
-      else if ((c.inside.has(y) || c.above.has(y)) && c.above.has(x)) rank = 1; /* over it */
-      else return;
-      if ((lit.get(r.drawn) || 0) < rank) lit.set(r.drawn, rank);
+    if (c) B.dedges.forEach(([u, v]) => {
+      const down = (c.seed.has(u) || c.below.has(u)) && c.below.has(v);
+      const up = (c.seed.has(v) || c.above.has(v)) && c.above.has(u);
+      if (!down && !up) return;
+      const r = S.fine.get(S.owner[u] * KEY + S.owner[v]);
+      if (!r || !r.drawn) return;
+      if (down) lit.set(r.drawn, "down");
+      else if (!lit.has(r.drawn)) lit.set(r.drawn, "up");
     });
     /* an edge drawn inside the focused container joins two things it holds: that is
        not its cone, but it is not the rest of the graph either, so it stays as it is */
     const within = (e) => { for (let b = e.box; b; b = b.parent) if (b === f) return true; return false; };
     edgeEls.forEach((p) => {
-      const rank = lit.get(p.__e) || 0;
-      p.classList.toggle("lit-direct", rank === 3);
-      p.classList.toggle("lit-down", rank === 2);
-      p.classList.toggle("lit-up", rank === 1);
+      const how = lit.get(p.__e);
+      p.classList.toggle("lit-down", how === "down");
+      p.classList.toggle("lit-up", how === "up");
       p.classList.toggle("within", !!f && within(p.__e));
     });
   }
@@ -664,7 +713,8 @@ export function createCanvas({ svg, viewport, on }) {
   }
 
   /* ================= interaction ================= */
-  /* Enter or a double-click on a group opens it; on a declaration, draws its cone */
+  /* Opening a box is what its own control does, and what Enter does: a group opens into
+     the boxes it holds, a declaration into the neighbourhood it sits in. */
   const activate = (n) => (n.kind === "group" ? on.toggle(n.gi) : on.cone(refOf(n)));
   function wireNode(g, n) {
     /* enter and leave do not bubble, so the innermost box under the pointer wins */
@@ -679,15 +729,20 @@ export function createCanvas({ svg, viewport, on }) {
       }
       on.tip(null);
     });
+    /* whether this event landed on the box's own control rather than on the box */
+    const onControl = (e) => {
+      for (let t = e.target; t && t !== g; t = t.parentNode) if (t.__control) return true;
+      return false;
+    };
     g.addEventListener("click", (e) => {
       e.stopPropagation();
       if (swallowClick) { swallowClick = false; return; }
-      for (let t = e.target; t && t !== g; t = t.parentNode) {
-        if (t.__toggle) { on.toggle(n.gi); return; }
-      }
-      on.select(refOf(n));
+      if (onControl(e)) { activate(n); return; }
+      /* Clicking the box that is already focused puts the drawing back the way it was.
+         What is asked is of the box rather than of the selection: a shut box stands for
+         whatever is selected inside it, and it is the box that is lit. */
+      on.select(nodeFor(sel) === n ? null : refOf(n));
     });
-    g.addEventListener("dblclick", (e) => { e.stopPropagation(); activate(n); });
     g.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
       e.preventDefault();
@@ -819,6 +874,7 @@ export function createCanvas({ svg, viewport, on }) {
       const from = { ...Z };
       S = scene;
       coneCache = new Map();
+      ownedBy = null;
       hover = null;
       draw();
       const now = at && nodeFor(opts.anchor);

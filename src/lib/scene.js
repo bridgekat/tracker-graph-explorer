@@ -77,9 +77,9 @@ function assemble(B, o) {
   B.dedges.forEach(([from, to]) => {
     const a = owner[from], b = owner[to];
     if (a < 0 || b < 0 || a === b) return;
-    /* What actually touches what, box to box, whatever each is nested in. The cone is
-       computed over this, and each of these knows which drawn edge stands in for it,
-       so the drawing can light exactly the lines that carry a cone relation. */
+    /* What actually touches what, box to box, whatever each is nested in, keyed by the
+       pair of boxes so that a real dependency can be asked which drawn edge stands in
+       for it — which is how the drawing lights exactly the lines that carry a cone. */
     let rel = fine.get(a * TD.KEY + b);
     if (!rel) fine.set(a * TD.KEY + b, rel = { a: nodes[a], b: nodes[b], drawn: null });
     /* climb to the two children of the deepest container holding both ends */
@@ -112,11 +112,7 @@ function assemble(B, o) {
 
   nodes.forEach(o.measure);          /* box size for a leaf, title width for a container */
 
-  /* the cone follows what touches what, not what the drawing chose to merge */
-  const adj = { out: nodes.map(() => []), in: nodes.map(() => []) };
-  fine.forEach((r) => { adj.out[r.a.id].push(r.b.id); adj.in[r.b.id].push(r.a.id); });
-
-  return { root, nodes, edges, fine: [...fine.values()], owner, adj, boxes: nodes.length - 1, width: 0, height: 0 };
+  return { root, nodes, edges, fine, owner, boxes: nodes.length - 1, width: 0, height: 0 };
 }
 
 /* ---------- where everything goes ----------

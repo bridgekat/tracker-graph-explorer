@@ -60,9 +60,25 @@ in its fill.
 Clicking a box lights everything it touches, above and below, and dims the rest; the lit edges are
 ink rather than a colour of their own, since the colours already mean something here. A shut box
 holding something in that cone stays lit, because it is standing in for it — the cone is followed
-over what really touches what, and only then mapped onto whatever boxes are on screen. Hovering
-marks the box under the pointer and no more: a drawing that rearranges its emphasis every time the
-pointer crosses it is hard to read.
+over what really touches what, and only then mapped onto whatever boxes are on screen. Walking the
+graph between boxes instead would be a different answer rather than an approximation of that one: a
+shut box stands for many declarations at once, so the walk arrives at it by one that is in the cone
+and leaves it by one that is not, and lights whatever is past that for nothing.
+
+Clicking the box that is already lit puts the drawing back the way it was, and so does Escape, or a
+click on the ground. Hovering marks the box under the pointer and no more: a drawing that rearranges
+its emphasis every time the pointer crosses it is hard to read.
+
+**Every box carries one control, and clicking the box itself never does anything but light it.** The
+control sits at the box's left, before its title, and does the one thing that box can be opened
+into: a group opens into the boxes it holds, a declaration into the neighbourhood it sits in. Enter
+does the same from the keyboard. It is at the left because that is the edge that opening does not
+move — a box grows to hold what is in it, so a control at its right would travel the whole of that
+width while you were still looking at it, and at the left the same click closes what it just opened.
+No box answers a double-click. A double-click arrives as two clicks first, so a gesture meant to open
+a box would take hold of it and let go of it on the way in, and one pointer gesture that means two
+things depending on how fast you were is not something to have to know. The ground still takes one,
+which fits the drawing to the window.
 
 Three panes fill the window, and the **canvas** is the whole of it: the other two float over the
 drawing rather than dividing it, so the drawing is the full width whether they are open or shut and
@@ -98,8 +114,8 @@ is nothing to set, and the page asks first if the cone is too big to read. Four 
 declarations are a hairball; one theorem's cone
 is a diagram, and it is the level at which "why is this here" has an answer.
 
-A neighbourhood is a different drawing rather than a setting, so nothing switches to one: Enter, or
-a double-click, on a box draws that box's cone. While you are in one the ground goes dotted, and a
+A neighbourhood is a different drawing rather than a setting, so nothing switches to one: a
+declaration's own control, or Enter, draws its cone. While you are in one the ground goes dotted, and a
 card in that floating row says what the cone is of and carries the way back out to the whole graph,
 which comes back as you left it.
 
@@ -155,10 +171,12 @@ is computed here, for the view on screen, every time it changes.
   than on one line per declaration.
 * **Which lines light.** One drawn line stands in for many real dependencies, so asking its two
   ends whether they are in the cone lights lines that carry none of it. The real relations are
-  asked instead which drawn line stands in for them, and that line lights, at the strongest claim
-  any of them makes: heaviest where it carries the focused box's own dependencies, lighter where it
-  only carries the chain those start. Nothing else is dashed, so dashed goes on meaning one thing —
-  an edge the layering had to reverse.
+  asked instead which drawn line stands in for them, and that line lights. There are two things it
+  can be carrying, and they are the two halves of the cone — the chain running down into what the
+  focused box rests on, drawn the stronger of the two, and the chain running up into what rests on
+  it. A box's own dependencies are the first step of those chains rather than a third kind of
+  thing, so they are not called out: every lit line is drawn at one weight, and dashed and heavy
+  both go on meaning what they meant — an edge the layering had to reverse, and the focused box.
 * **Cycles.** The real graph between declarations is acyclic, but the graph between *containers*
   need not be. A greedy feedback-arc pass picks a linear order, the edges that contradict it are
   counted and drawn dashed, and the reduction runs on what is left.

@@ -163,6 +163,7 @@
   stroke: var(--ink);
   stroke-width: 1.5;
   stroke-linecap: round;
+  stroke-linejoin: round;
   fill: none;
   pointer-events: none
 }
@@ -193,14 +194,6 @@
 #exSvg.focused .ex-edge.lit-up {
   opacity: .42;
   stroke: var(--ink)
-}
-
-/* the focused box own lines: the heaviest thing on the canvas, so that dashed can
-   go on meaning one thing only — an edge the layering had to reverse */
-#exSvg.focused .ex-edge.lit-direct {
-  opacity: 1;
-  stroke: var(--ink);
-  stroke-width: 2.2
 }
 
 /* inside the focused container, the drawing is the point: its edges keep their look */

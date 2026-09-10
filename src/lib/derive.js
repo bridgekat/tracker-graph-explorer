@@ -315,14 +315,19 @@ function refAt(base, addr, unesc = (s) => s) {
    they rest on and everything that rests on them, all the way down and all the way up.
    Stopping short of that is a picture with an edge that means nothing — a box at the
    boundary looks like a box that rests on nothing — so the whole of it is drawn, and
-   the drawing asks before it lays out a cone too big to read. --- */
+   the drawing asks before it lays out a cone too big to read.
+
+   Each direction is walked on its own. Sharing one visited set between them would let
+   the walk downwards stop the walk upwards: a declaration the seeds rest on can also
+   rest on them — through another seed, or around a cycle — and reaching it downwards
+   first would leave everything above it out of the picture. --- */
 function cone(base, seeds) {
   const out = new Set(seeds);
   const expand = (adj) => {
-    const todo = seeds.slice();
+    const seen = new Set(seeds), todo = seeds.slice();
     while (todo.length) {
       const u = todo.pop();
-      for (const v of adj[u]) if (!out.has(v)) { out.add(v); todo.push(v); }
+      for (const v of adj[u]) if (!seen.has(v)) { seen.add(v); out.add(v); todo.push(v); }
     }
   };
   expand(base.dout);                          /* what they rest on */

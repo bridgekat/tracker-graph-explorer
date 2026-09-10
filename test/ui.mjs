@@ -110,7 +110,8 @@ const check = (name, ok, detail) => {
   console.log(`${ok ? "  ok  " : " FAIL "} ${name}${detail ? "  — " + detail : ""}`);
 };
 
-/* where a group's box and its toggle are, in CSS pixels */
+/* where a group's box and its control are, in CSS pixels. The control is at the left of
+   the box, so the body is asked for past it rather than at the box's own left edge. */
 const locate = (prefix) => `
   const g = [...document.querySelectorAll('#exSvg .ex-node.grp')]
     .find(e => e.getAttribute('aria-label').startsWith(${JSON.stringify(prefix)}));
@@ -118,7 +119,7 @@ const locate = (prefix) => `
   const box = g.querySelector(':scope > .ex-box, :scope > .ex-cbg').getBoundingClientRect();
   const tog = g.querySelector('.ex-toggle rect').getBoundingClientRect();
   return {
-    body: [Math.round(box.x + 14), Math.round(box.y + box.height / 2)],
+    body: [Math.round(tog.right + 12), Math.round(box.y + box.height / 2)],
     toggle: [Math.round(tog.x + tog.width / 2), Math.round(tog.y + tog.height / 2)],
   };`;
 
@@ -194,11 +195,28 @@ try {
   check("click a box selects it", after.title === "Krylov" && after.sel === 1,
     `detail=${after.title} outlined=${after.sel}`);
 
-  /* --- expand: click the + --- */
+  /* where a box's control sits within it, and how wide the box is */
+  const anchor = (prefix) => `
+    const g = [...document.querySelectorAll('#exSvg .ex-node.grp')]
+      .find(e => e.getAttribute('aria-label').startsWith(${JSON.stringify(prefix)}));
+    const box = g.querySelector(':scope > .ex-box, :scope > .ex-cbg').getBoundingClientRect();
+    const c = g.querySelector(':scope > .ex-toggle rect').getBoundingClientRect();
+    return { off: Math.round(c.x - box.x), w: Math.round(box.width) };`;
+
+  /* --- expand: click the ＋ --- */
   const before = await boxes();
+  const shutAt = await evaluate(anchor("Numlib/Krylov,"));
   at = await evaluate(locate("Numlib/Krylov,"));
   await clickAt(...at.toggle);
   const more = await boxes();
+  /* --- and the control is at the edge that opening does not move ---
+     A box grows to hold what is in it, so a control at its right travels the whole of
+     that width while you are still looking at it. At the left it stays under the
+     pointer, and the same click closes what it just opened. */
+  const openAt = await evaluate(anchor("Numlib/Krylov,"));
+  check("the control stays put when the box opens",
+    shutAt.off <= 1 && openAt.off <= 1 && openAt.w > shutAt.w + 100,
+    `${shutAt.off}px in at ${shutAt.w}px wide, ${openAt.off}px in at ${openAt.w}px`);
   const opened = await evaluate(`return !![...document.querySelectorAll('#exSvg .ex-node.grp')]
     .find(e => e.getAttribute('aria-label') === 'Numlib/Krylov/Arnoldi, 28 results, proved. Enter to open it.')`);
   check("＋ expands the box", more > before && opened, `${before} → ${more} boxes`);
@@ -218,6 +236,19 @@ try {
   await clickAt(...at.toggle);
   const back = await boxes();
   check("− collapses it again", back === before, `${more} → ${back} boxes`);
+
+  /* --- Escape lets go of what is focused ---
+     Krylov has been the focused box since it was clicked, and clicking a focused box is
+     how you let go of it, so the next click on it would put the drawing back rather than
+     select it. This is also the other way of letting go. */
+  const esc = await evaluate(`
+    document.getElementById('exViewport').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r => setTimeout(r, 200));
+    return { sel: document.querySelectorAll('#exSvg .ex-node.sel').length,
+             dim: document.querySelectorAll('#exSvg .ex-node.dim').length };`);
+  check("Escape lets go of the focused box", !esc.sel && !esc.dim,
+    `${esc.sel} outlined, ${esc.dim} dimmed`);
 
   /* --- selecting an open container fades the graph around it, not what is in it --- */
   at = await evaluate(locate("Numlib/Krylov,"));
@@ -328,26 +359,38 @@ try {
     document.querySelectorAll('#exTree .tw')[0].click();
     await new Promise(r => setTimeout(r, 1200));
     ${SETTLE}
-    const direct = [...document.querySelectorAll('.ex-edge.lit-direct:not(.back)')];
-    const cs = direct.length ? getComputedStyle(direct[0]) : null;
-    const dash = cs ? cs.strokeDasharray : '';
-    const wide = cs ? parseFloat(cs.strokeWidth) : 0;
-    const lit = document.querySelector('.ex-edge.lit-down:not(.back)');
-    const litWide = lit ? parseFloat(getComputedStyle(lit).strokeWidth) : 0;
+    /* a lit line is ink, and it is the only thing on the canvas that is; a line the
+       layering had to reverse is the only dashed one, lit or not */
+    const one = document.querySelector('.ex-edge.lit-down:not(.back)');
+    const cs = one ? getComputedStyle(one) : null;
+    const faint = [...document.querySelectorAll('#exSvg .ex-edge')]
+      .filter(e => !e.classList.contains('lit-down') && !e.classList.contains('lit-up')
+        && !e.classList.contains('within'))
+      .filter(e => parseFloat(getComputedStyle(e).opacity) > 0.2).length;
     /* a shut box that holds something in the cone must stay lit, or the cone lies */
     const shutLit = [...document.querySelectorAll('#exSvg .ex-node.grp:not(.open):not(.dim)')].length;
     return {
       sel: document.querySelector('#exDetail h3') && document.querySelector('#exDetail h3').textContent,
-      direct: direct.length,
       down: document.querySelectorAll('.ex-edge.lit-down').length,
+      up: document.querySelectorAll('.ex-edge.lit-up').length,
       dim: document.querySelectorAll('.ex-node.dim').length,
-      dash, wide, litWide, shutLit,
+      dash: cs ? cs.strokeDasharray : '', lit: cs ? cs.opacity : '',
+      widths: [...new Set([...document.querySelectorAll('.ex-edge.lit-down, .ex-edge.lit-up')]
+        .map(e => getComputedStyle(e).strokeWidth))],
+      faint, shutLit,
     };`);
-  check("focusing a deep declaration lights its own lines", deep.sel === "isMinResIterate" && deep.direct > 0,
-    `${deep.direct} direct, ${deep.down} in the cone`);
+  check("focusing a deep declaration lights the lines its cone runs along",
+    deep.sel === "isMinResIterate" && deep.down > 0 && deep.up > 0,
+    `${deep.down} down, ${deep.up} up`);
   check("dashed still means only a reversed edge", deep.dash === "none", deep.dash);
-  check("the focused box's lines are the heaviest", deep.wide > deep.litWide,
-    `${deep.wide}px vs ${deep.litWide}px`);
+  /* Weight is not one of the things a lit line says: the two halves of the cone are told
+     apart by how strongly each is drawn, and every lit line is drawn at the same width as
+     every other, so dashed and heavy both go on meaning what they meant. */
+  check("a lit line is told apart by its strength, not by its weight",
+    deep.widths.length === 1 && parseFloat(deep.lit) > 0.5,
+    `${deep.widths.join(", ")} throughout, lit at ${deep.lit}`);
+  check("and everything outside the cone is faint", deep.faint === 0 && deep.dim > 0,
+    `${deep.faint} un-faded outside it, ${deep.dim} boxes dimmed`);
   check("shut boxes holding cone nodes stay lit", deep.shutLit > 0 && deep.dim > 0,
     `${deep.shutLit} lit shut boxes, ${deep.dim} dimmed`);
 
@@ -392,6 +435,82 @@ try {
     landed.title === "Eigen" && landed.sel.length === 1
       && landed.sel[0].startsWith("Numlib/Eigen,"),
     `${landed.title}, outlined ${JSON.stringify(landed.sel)}`);
+
+  /* --- the cone is followed over what really touches what ---
+     A shut box stands for many declarations at once, so a walk over the graph between
+     boxes can arrive at one by a declaration that is in the cone and leave it by a
+     declaration that is not, and light whatever is past it for nothing. These two
+     theorems are in the same module and touch none of each other's dependencies in
+     either direction; what they share is that each touches a declaration in the same
+     shut area, which is a path no dependency ever took. */
+  const honest = await evaluate(`
+    location.hash = '#Numlib/Krylov/Iterate,Krylov.IsMinResIterate.norm_residual_antitone';
+    await new Promise(r => setTimeout(r, 1500));
+    ${SETTLE}
+    const at = (name) => [...document.querySelectorAll('#exSvg .ex-node.decl')]
+      .find(e => e.getAttribute('aria-label').startsWith(name + ','));
+    const f = at('Krylov.IsMinResIterate.norm_residual_antitone');
+    const other = at('Krylov.IsMinResIterate.norm_residual_le_norm_aeval');
+    const r = f && f.getBoundingClientRect();
+    return {
+      sel: !!f && f.classList.contains('sel'),
+      drawn: !!other,
+      dim: !!other && other.classList.contains('dim'),
+      shut: document.querySelectorAll('#exSvg .ex-node.grp:not(.open):not(.dim)').length,
+      at: r && [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)],
+    };`);
+  check("a box the focused one does not touch is dimmed",
+    honest.sel && honest.drawn && honest.dim,
+    honest.drawn ? (honest.dim ? "dimmed" : "lit through a shut box") : "not on the canvas");
+  check("a shut box holding something in the cone still stands in for it",
+    honest.shut > 0, `${honest.shut} lit shut boxes`);
+
+  /* --- and clicking what is already focused puts the drawing back to itself --- */
+  await clickAt(...honest.at);
+  const off = await evaluate(`return {
+    sel: document.querySelectorAll('#exSvg .ex-node.sel').length,
+    dim: document.querySelectorAll('#exSvg .ex-node.dim').length,
+    focused: document.getElementById('exSvg').classList.contains('focused'),
+    detail: !!document.querySelector('#exDetail h3') };`);
+  check("clicking the focused box defocuses it",
+    !off.sel && !off.dim && !off.focused, `${off.sel} outlined, ${off.dim} dimmed`);
+
+  /* --- a declaration carries the same control, doing what a declaration opens into ---
+     One control, in one place, doing the one thing the box it is on can be opened into:
+     a group into the boxes it holds, a declaration into the neighbourhood it sits in.
+     That neighbourhood used to be reachable by a double-click and by nothing else. */
+  const nb = await evaluate(`
+    const d = [...document.querySelectorAll('#exSvg .ex-node.decl')]
+      .find(e => e.getAttribute('aria-label')
+        .startsWith('Krylov.IsMinResIterate.norm_residual_antitone,'));
+    const box = d.querySelector(':scope > .ex-box').getBoundingClientRect();
+    const c = d.querySelector(':scope > .ex-toggle rect').getBoundingClientRect();
+    return { off: Math.round(c.x - box.x),
+             label: d.querySelector(':scope > .ex-toggle').getAttribute('aria-label'),
+             at: [Math.round(c.x + c.width / 2), Math.round(c.y + c.height / 2)] };`);
+  check("a declaration carries one too, at the same edge",
+    nb.off <= 1 && /^Draw the neighbourhood of /.test(nb.label),
+    `${nb.off}px in, "${nb.label}"`);
+
+  await clickAt(...nb.at);
+  const drew = await evaluate(`
+    for (let i = 0; i < 80 && !document.getElementById('exConeBar'); i++)
+      await new Promise(r => setTimeout(r, 100));
+    ${SETTLE}
+    return { bar: !!document.getElementById('exConeBar'),
+             of: (document.getElementById('exConeOf') || {}).textContent || '',
+             decls: document.querySelectorAll('#exSvg .ex-node.decl').length,
+             groups: document.querySelectorAll('#exSvg .ex-node.grp').length };`);
+  check("and it draws that neighbourhood, whole and on its own",
+    drew.bar && drew.groups === 0 && drew.decls === 17,
+    `${drew.decls} declarations, ${drew.groups} groups, of ${drew.of.trim()}`);
+
+  /* back out to the whole graph, which comes back as it was left */
+  await evaluate(`
+    document.getElementById('exConeBack').click();
+    for (let i = 0; i < 80 && document.getElementById('exConeBar'); i++)
+      await new Promise(r => setTimeout(r, 100));
+    ${SETTLE} return 1;`);
 
   /* --- the panes float over the drawing, and are dragged wider by their grip --- */
   const gw = await evaluate("return document.getElementById('exSide').getBoundingClientRect().width");
