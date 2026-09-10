@@ -18,7 +18,7 @@
     DownloadOutline,
     FolderOpenOutline,
   } from "flowbite-svelte-icons";
-  import { bakedGraph, bakedName, downloadGraph } from "./lib/site.js";
+  import { bakedName, downloadGraph, hasBaked } from "./lib/site.js";
   import Grip from "./Grip.svelte";
   import IndexPane from "./IndexPane.svelte";
   import DetailPane from "./DetailPane.svelte";
@@ -33,7 +33,7 @@
   function onDrop(e) {
     e.preventDefault();
     dragging = false;
-    if (!bakedGraph) readFile(e.dataTransfer?.files?.[0]);
+    if (!hasBaked) readFile(e.dataTransfer?.files?.[0]);
   }
 
   $effect(() => {
@@ -48,7 +48,7 @@
 <svelte:window
   ondragover={(e) => {
     e.preventDefault();
-    if (!bakedGraph) dragging = true;
+    if (!hasBaked) dragging = true;
   }}
   ondragleave={(e) => {
     if (e.relatedTarget === null) dragging = false;
@@ -67,7 +67,7 @@
     </span>
     <div class="ms-auto flex shrink-0 items-center gap-2">
       <!-- the graph is the build's, so the way out of the page is the way in reversed -->
-      {#if bakedGraph}
+      {#if hasBaked}
         <Button
           id="saveBtn"
           size="xs"

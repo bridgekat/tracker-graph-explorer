@@ -1,8 +1,8 @@
 import "./app.css";
 import { mount } from "svelte";
 import App from "./App.svelte";
-import { app, readText } from "./lib/state.svelte.js";
-import { bakedGraph, bakedName } from "./lib/site.js";
+import { app, readGraph, readText } from "./lib/state.svelte.js";
+import { bakedName, hasBaked, loadBaked } from "./lib/site.js";
 
 /* The system preference is resolved to a class once, before anything mounts, so the
    tokens, Tailwind's dark variant and the canvas all read the same single signal.
@@ -17,8 +17,10 @@ mount(App, { target: document.getElementById("app") });
    Otherwise, a graph named in the query string, so the page can be published beside one:
    index.html?graph=graph.json. Nothing is fetched unless the URL asks for it. */
 const q = new URLSearchParams(location.search).get("graph");
-if (bakedGraph) {
-  readText(bakedGraph, bakedName);
+if (hasBaked) {
+  loadBaked()
+    .then((g) => readGraph(g, bakedName))
+    .catch((e) => { app.error = `Could not read the graph built into this page. ${e.message || ""}`; });
 } else if (q) {
   fetch(q)
     .then((r) => {

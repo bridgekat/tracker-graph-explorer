@@ -8,9 +8,8 @@
 import { SvelteSet } from "svelte/reactivity";
 import * as TD from "./derive.js";
 import * as SC from "./scene.js";
+import { asGraph, inflateJson, isGzip } from "./format.js";
 import { measure } from "./canvas.js";
-
-const SOFT_LIMIT = 1500;          /* above this the page asks before drawing */
 
 export const app = $state({
   base: null,
@@ -24,8 +23,6 @@ export const app = $state({
   sizing: false,                  /* a pane is being dragged wider: styles/shell.css */
   dark: document.documentElement.classList.contains("dark"),
   zoom: 1,
-  tooBig: null,                   /* { boxes } waiting on a yes; the scene is held below */
-  confirmed: 0,
   busy: false,                    /* a layout is running */
 });
 
@@ -57,22 +54,15 @@ function assembleScene() {
   return SC.assemble(app.base, opts);
 }
 
-/* The scene a warning is waiting on. It is deliberately not in `app`: $state deep-proxies
-   plain objects, and a scene at full depth is thousands of nodes that the canvas then
-   writes its own layer references onto. Proxied, those writes land on one identity and
-   the edge records read another, and the drawing comes out with no edges at all. */
-let pending = null;
+/* A scene is deliberately not in `app`: $state deep-proxies plain objects, and a scene at
+   full depth is thousands of nodes that the canvas then writes its own layer references
+   onto. Proxied, those writes land on one identity and the edge records read another, and
+   the drawing comes out with no edges at all. */
 let seq = 0;                      /* which scene was asked for last */
 
 function rebuild(opts = {}) {
   if (!app.base || !canvas) return;
-  const scene = assembleScene();
-  if (scene.boxes > SOFT_LIMIT && scene.boxes > app.confirmed) {
-    pending = { scene, opts };
-    app.tooBig = { boxes: scene.boxes };
-    return;
-  }
-  return settle(scene, opts);
+  return settle(assembleScene(), opts);
 }
 /* lay the scene out and draw it, unless something newer was asked for meanwhile */
 async function settle(scene, opts) {
@@ -87,18 +77,8 @@ async function settle(scene, opts) {
     if (mine === seq) app.busy = false;
   }
   if (mine !== seq) return;
-  app.tooBig = null;
-  pending = null;
   canvas.setScene(scene, opts);
   canvas.setSelection(app.sel);
-}
-export function drawAnyway() {
-  if (!pending) return;
-  app.confirmed = app.tooBig.boxes;
-  const p = pending;
-  app.tooBig = null;
-  pending = null;
-  settle(p.scene, p.opts);
 }
 
 /* ---------- actions ---------- */
@@ -234,21 +214,17 @@ addEventListener("resize", () => {
   setPaneWidth("detail", app.pane.detail);
 });
 
-/* ---------- loading ---------- */
-export function readText(txt, label) {
-  let raw;
-  try { raw = JSON.parse(txt); }
-  catch (e) { app.error = `That file is not valid JSON. ${e.message}`; return; }
+/* ---------- loading ----------
+   Every way in ends here: a parsed graph, in the contract shape or the compact one. */
+export function readGraph(g, label) {
   let base;
-  try { base = TD.buildBase(raw); }
+  try { base = TD.buildBase(asGraph(g)); }
   catch (e) { app.error = e.message || String(e); return; }
   app.error = "";
   app.base = base;
   app.src = label;
   app.sel = null;
   app.coneSeed = null;
-  app.tooBig = null;
-  app.confirmed = 0;
   canvas?.setBase(base);
   /* the areas: the picture of the project that fits on a screen */
   const depth = base.tree.length > 40 ? 1 : 2;
@@ -259,8 +235,24 @@ export function readText(txt, label) {
   /* a link into some other graph is not this graph's address */
   writeHash();
 }
-export function readFile(f) {
-  if (f) f.text().then((t) => readText(t, f.name));
+export function readText(txt, label) {
+  let raw;
+  try { raw = JSON.parse(txt); }
+  catch (e) { app.error = `That file is not valid JSON. ${e.message}`; return; }
+  readGraph(raw, label);
+}
+/* A file may be the JSON or the gzip of it — `tracker graph | gzip` is a tenth the size
+   and the browser can inflate it — so the first two bytes decide, and a compressed one
+   goes from the file to the parser without becoming a string on the way. */
+export async function readFile(f) {
+  if (!f) return;
+  try {
+    const head = new Uint8Array(await f.slice(0, 2).arrayBuffer());
+    if (isGzip(head)) readGraph(await inflateJson(f.stream()), f.name);
+    else readText(await f.text(), f.name);
+  } catch (e) {
+    app.error = `Could not read ${f.name}. ${e.message || e}`;
+  }
 }
 /* the file picker, without a hidden <input> in every component that wants one */
 export function pickFile() {

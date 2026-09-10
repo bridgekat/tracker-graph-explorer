@@ -19,6 +19,7 @@ const PAD = 13;                /* inside a container, around its content */
 const HEAD = 21;               /* the container's title strip */
 const GAP = { x: 44, y: 11 };  /* between columns, and within one */
 const TOP_GAP = { x: 68, y: 30 };
+const BUSY = 200;              /* children past which a container is laid out for speed */
 
 /* ---------- what is visible ----------
    o.open is the set of open groups; o.cone, if given, is a set of declarations to
@@ -138,6 +139,12 @@ function toElk(S) {
       "elk.spacing.edgeEdge": "4",
       "elk.layered.spacing.edgeNodeBetweenLayers": "10",
       "elk.layered.spacing.edgeEdgeBetweenLayers": "4",
+      /* Crossing minimisation sweeps a container `thoroughness` times, and each sweep
+         costs what the container holds; on one holding hundreds of boxes the sweeps
+         stop earning their keep long before the seventh, since a drawing that dense is
+         not read edge by edge anyway. Small containers, which is nearly all of them,
+         keep the full quality. On a plan of 2,353 modules this is a third off the wait. */
+      ...(n.children.length > BUSY ? { "elk.layered.thoroughness": "1" } : {}),
       "elk.padding": n.kind === "root"
         ? "[top=0,left=0,bottom=0,right=0]"
         : `[top=${PAD + HEAD},left=${PAD},bottom=${PAD},right=${PAD}]`,

@@ -236,6 +236,7 @@ become markup. There is no `{@html}` anywhere, and a test asserts it.
 | `src/lib/state.svelte.js` | the state, and the few actions that change it |
 | `src/lib/util.js` | the colours, the formatting and the text measuring |
 | `src/lib/site.js` | what the build baked into the page: the graph, its download, the API docs |
+| `src/lib/format.js` | the compact form of a graph and the gzip around it, shared by the build and the page |
 | `test/ui.mjs` | the page driven by real mouse input, in a headless browser |
 
 ```
@@ -260,9 +261,19 @@ the graph it has just exported:
 TRACKER_GRAPH=graph.json TRACKER_DOCS=docs npm run build
 ```
 
-**`TRACKER_GRAPH`** puts that graph in the page, as JSON in a `<script type="application/json">`
-rather than as a string in the script, so that it is read by `JSON.parse` rather than by the
-JavaScript parser. It is re-serialised on the way in, which costs it `tracker graph`'s indentation.
+**`TRACKER_GRAPH`** puts that graph in the page, compressed, in a `<script>` no browser will
+execute. The build pays for the compression once and every reader of the page would otherwise pay
+for the size of it forever, so it is done eagerly and twice over: the graph is rewritten into the
+compact form — the contract said by column rather than by row, an edge naming its ends by their
+index rather than spelling both out — and then gzipped, and `DecompressionStream` unpacks it on
+the way in. On the plan of a large project that is 90MB of page down to 4MB, most of it because
+the edges are nearly the whole of a graph and nearly the whole of each edge was two declaration
+ids written out in full. `src/lib/format.js` holds both halves, and `expand` is the exact inverse
+of `compact`, which is what lets the page hand back the file it was built from.
+
+A graph the page is given rather than built with is still the contract as `tracker graph` prints
+it — that format is what other tools read, and nothing here changes it. A `.json.gz` may be
+dropped on the page as well as a `.json`; the first two bytes are what decides.
 
 What comes out is a page about that graph rather than a page that takes one, and it is the whole
 of the difference: the page opens on it, and every way of loading another — the button, the drop,

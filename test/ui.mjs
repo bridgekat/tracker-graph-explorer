@@ -566,10 +566,10 @@ try {
       && /^hsl\(/.test(prog.fill) && prog.fill !== prog.ground,
     `${prog.pw.toFixed(1)}/${prog.bw} wide, ${prog.ph}/${prog.h} tall, ${prog.fill} on ${prog.ground}`);
 
-  /* --- the first draw past the too-big warning has its edges ---
-     The pending scene used to be parked in $state, which deep-proxied every node in
-     it; the canvas then wrote its edge layers onto one identity and the edge records
-     read another, so that first draw came out with nodes and no edges at all. */
+  /* --- the whole project at declaration depth still has its edges ---
+     A scene must never be parked in $state, which deep-proxies every node in it; the
+     canvas then writes its edge layers onto one identity and the edge records read
+     another, and the draw comes out with nodes and no edges at all. */
   const past = await evaluate(`
     const hit = (t) => [...document.querySelectorAll('button')]
       .find(b => b.textContent.trim() === t);
@@ -580,24 +580,21 @@ try {
     const menu = !!document.getElementById('exMenu');
     hit('Declarations').click();
     await new Promise(r => setTimeout(r, 1500));
-    const warned = !!document.getElementById('exBig');
-    const yes = hit('Draw it anyway');
-    if (yes) yes.click();
     /* thousands of boxes take ELK a while and the draw after it a while again; wait
        for the page to say it is done rather than guess how long that is */
     for (let i = 0; i < 200; i++) {
       await new Promise(r => setTimeout(r, 250));
-      if (i && !document.getElementById('exBusy') && !document.getElementById('exBig')) break;
+      if (i && !document.getElementById('exBusy')) break;
     }
     ${SETTLE}
-    return { warned, menu, shut: !document.getElementById('exMenu'),
+    return { menu, shut: !document.getElementById('exMenu'),
              nodes: document.querySelectorAll('#exSvg .ex-node').length,
              edges: document.querySelectorAll('#exSvg .ex-edge').length };`);
   check("right-click opens the menu, and picking from it closes it",
     past.menu && past.shut, past.menu ? "opened and shut" : "never opened");
-  check("the first draw past the warning has its edges",
-    past.warned && past.nodes > 1000 && past.edges > 1000,
-    `warned=${past.warned}, ${past.nodes} nodes, ${past.edges} edges`);
+  check("the whole project at declaration depth has its edges",
+    past.nodes > 1000 && past.edges > 1000,
+    `${past.nodes} nodes, ${past.edges} edges`);
 
   const errs = await evaluate("return (window.__errs||[]).length");
   check("no page errors", !errs);

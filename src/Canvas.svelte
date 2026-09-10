@@ -23,7 +23,6 @@
     app,
     attachCanvas,
     covers,
-    drawAnyway,
     fit,
     openWhere,
     pickFile,
@@ -37,7 +36,7 @@
     toggleGroup,
     zoomBy,
   } from "./lib/state.svelte.js";
-  import { bakedGraph } from "./lib/site.js";
+  import { hasBaked } from "./lib/site.js";
   import { fmt } from "./lib/util.js";
 
   let svg, viewport;
@@ -295,27 +294,10 @@
     </div>
   {/if}
 
-  {#if app.tooBig}
-    <div id="exBig" class="absolute inset-0 flex items-center justify-center p-6">
-      <Card class="max-w-lg p-5">
-        <div class="font-mono text-2xl text-gray-950 dark:text-white">
-          {fmt(app.tooBig.boxes)} boxes
-        </div>
-        <p class={P}>
-          That is a lot to draw at once, and it will be a hairball rather than a diagram.
-          Opening one group at a time, or picking a declaration and drawing its
-          neighbourhood, usually answers the question faster.
-        </p>
-        <div class="mt-4 flex flex-wrap gap-2">
-          <Button size="xs" color="alternative" onclick={drawAnyway}>Draw it anyway</Button>
-          <Button size="xs" onclick={() => openWhere(MODULES)}>Open to modules instead</Button>
-        </div>
-      </Card>
-    </div>
-    <!-- Every way in this card offers is a way of loading another graph, so a page built
-         around one does not show it. Reaching here at all means that graph did not read,
-         and the error above it is the whole of what there is to say. -->
-  {:else if !app.base && !bakedGraph}
+  <!-- Every way in this card offers is a way of loading another graph, so a page built
+       around one does not show it. Reaching here at all means that graph did not read,
+       and the error above it is the whole of what there is to say. -->
+  {#if !app.base && !hasBaked}
     <div
       id="exEmpty"
       class="absolute inset-0 flex items-center justify-center overflow-y-auto p-6"
