@@ -265,6 +265,28 @@ try {
   check("drag from inside a box pans", cam2 !== cam3);
   check("that drag does not select the box", stillKrylov === "Krylov", `detail=${stillKrylov}`);
 
+  /* --- an open container answers from its title strip, and not from the room inside ---
+     Most of an open container is where its children sit, and a pointer crossing that on
+     its way to one of them is not asking about the container. The probes go straight to
+     the container's own element, so what is being read is the rule and not whatever
+     happens to be drawn at that point. */
+  const strip = await evaluate(`
+    const g = document.querySelector('#exSvg .ex-node.grp.open');
+    if (!g) return null;
+    const r = g.querySelector(':scope > .ex-cbg').getBoundingClientRect();
+    const probe = async (y) => {
+      g.dispatchEvent(new PointerEvent('pointerenter', { clientX: r.x + 30, clientY: y }));
+      await new Promise(z => setTimeout(z, 60));
+      const shown = !!document.getElementById('tip');
+      g.dispatchEvent(new PointerEvent('pointerleave'));
+      await new Promise(z => setTimeout(z, 60));
+      return shown;
+    };
+    return { title: await probe(r.y + 4), body: await probe(r.y + r.height / 2) };`);
+  check("an open container says what it is from its title, not from the room inside it",
+    strip && strip.title && !strip.body,
+    strip ? `title ${strip.title}, body ${strip.body}` : "nothing open to ask");
+
   /* --- Markdown, through the pane that actually renders it --- */
   const mdDom = await evaluate(`
     const pick = async (needle) => {
@@ -346,7 +368,7 @@ try {
       : !docs.href,
     docs.href || "no link");
 
-  /* --- the panes resize by dragging the splitter between them --- */
+  /* --- the panes float over the drawing, and are dragged wider by their grip --- */
   const gw = await evaluate("return document.getElementById('exSide').getBoundingClientRect().width");
   const grip = await evaluate(
     "const r = document.querySelectorAll('[role=\\'separator\\']')[0].getBoundingClientRect();" +
@@ -356,8 +378,26 @@ try {
   const gw2 = await evaluate("return document.getElementById('exSide').getBoundingClientRect().width");
   const vb = await evaluate("return document.getElementById('exSvg').getAttribute('viewBox')");
   const vw = await evaluate("return document.getElementById('exViewport').clientWidth");
-  check("dragging the splitter resizes the pane", Math.abs(gw2 - gw - 90) < 8, `${gw} → ${gw2}`);
-  check("the canvas follows the new width", vb.split(" ")[2] === String(vw), `${vb} vs ${vw}`);
+  check("dragging its grip resizes the pane", Math.abs(gw2 - gw - 90) < 8, `${gw} → ${gw2}`);
+  check("the canvas is as wide as its own element", vb.split(" ")[2] === String(vw), `${vb} vs ${vw}`);
+
+  /* --- the drawing runs under the panes, and folding one uncovers it ---
+     A pane is over the drawing rather than beside it, so the canvas is the whole width
+     however many panes are open, and folding one neither resizes nor redraws it. */
+  const fold = await evaluate(`
+    const box = () => document.getElementById('exViewport').getBoundingClientRect();
+    const side = document.getElementById('exSide').getBoundingClientRect();
+    const under = box().x <= side.x + 1 && box().right >= side.right - 1;
+    const before = document.getElementById('exSvg').getAttribute('viewBox');
+    document.getElementById('exFoldIndex').click();
+    await new Promise(r => setTimeout(r, 500));
+    return { under, before, after: document.getElementById('exSvg').getAttribute('viewBox'),
+             hidden: getComputedStyle(document.getElementById('exSide')).visibility };`);
+  check("the drawing runs under a pane, and folding one leaves it alone",
+    fold.under && fold.hidden === "hidden" && fold.before === fold.after,
+    `${fold.before} throughout, index ${fold.hidden}`);
+  await evaluate("document.getElementById('exFoldIndex').click();"
+    + " await new Promise(r => setTimeout(r, 400)); return 1;");
 
   /* --- zoom buttons --- */
   const z0 = await evaluate("return document.getElementById('exZoomLab').textContent");
@@ -365,7 +405,9 @@ try {
   const z1 = await evaluate("return document.getElementById('exZoomLab').textContent");
   check("zoom in changes the scale", z0 !== z1, `${z0} → ${z1}`);
 
-  /* --- the progress overlay --- */
+  /* --- the progress bar ---
+     One hue in two strengths: the bar is the hue, the ground under it is the same hue
+     let down to a tint, so the two are never the same colour. */
   const prog = await evaluate(`
     const g = [...document.querySelectorAll('#exSvg .ex-node.grp')]
       .find(e => e.getAttribute('aria-label').startsWith('Numlib/Eigen,'));
@@ -373,10 +415,12 @@ try {
     const p = g.querySelector(':scope > .ex-prog');
     return { h: +box.getAttribute('height'), ph: +p.getAttribute('height'), py: +p.getAttribute('y'),
              pw: +p.getAttribute('width'), bw: +box.getAttribute('width'),
-             clip: !!p.getAttribute('clip-path'), fill: p.getAttribute('fill') };`);
-  check("progress fills the box height, clipped by it",
-    prog.ph === prog.h && prog.py === 0 && prog.clip && /rgba\(0, 0, 0/.test(prog.fill) && prog.pw < prog.bw,
-    `${prog.pw.toFixed(1)}/${prog.bw} wide, ${prog.ph}/${prog.h} tall, ${prog.fill}`);
+             clip: !!p.getAttribute('clip-path'), fill: p.getAttribute('fill'),
+             ground: g.querySelector(':scope > .ex-fill').getAttribute('fill') };`);
+  check("progress fills the box height, clipped by it, in the box's own colour",
+    prog.ph === prog.h && prog.py === 0 && prog.clip && prog.pw <= prog.bw
+      && /^hsl\(/.test(prog.fill) && prog.fill !== prog.ground,
+    `${prog.pw.toFixed(1)}/${prog.bw} wide, ${prog.ph}/${prog.h} tall, ${prog.fill} on ${prog.ground}`);
 
   /* --- the first draw past the too-big warning has its edges ---
      The pending scene used to be parked in $state, which deep-proxied every node in
@@ -385,14 +429,28 @@ try {
   const past = await evaluate(`
     const hit = (t) => [...document.querySelectorAll('button')]
       .find(b => b.textContent.trim() === t);
+    /* how far to open the tree is asked for in the canvas's own right-click menu */
+    document.getElementById('exViewport').dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, button: 2, clientX: 600, clientY: 400 }));
+    await new Promise(r => setTimeout(r, 120));
+    const menu = !!document.getElementById('exMenu');
     hit('Declarations').click();
     await new Promise(r => setTimeout(r, 1500));
     const warned = !!document.getElementById('exBig');
     const yes = hit('Draw it anyway');
     if (yes) yes.click();
-    await new Promise(r => setTimeout(r, 3000));
-    return { warned, nodes: document.querySelectorAll('#exSvg .ex-node').length,
+    /* thousands of boxes take ELK a while and the draw after it a while again; wait
+       for the page to say it is done rather than guess how long that is */
+    for (let i = 0; i < 200; i++) {
+      await new Promise(r => setTimeout(r, 250));
+      if (i && !document.getElementById('exBusy') && !document.getElementById('exBig')) break;
+    }
+    ${SETTLE}
+    return { warned, menu, shut: !document.getElementById('exMenu'),
+             nodes: document.querySelectorAll('#exSvg .ex-node').length,
              edges: document.querySelectorAll('#exSvg .ex-edge').length };`);
+  check("right-click opens the menu, and picking from it closes it",
+    past.menu && past.shut, past.menu ? "opened and shut" : "never opened");
   check("the first draw past the warning has its edges",
     past.warned && past.nodes > 1000 && past.edges > 1000,
     `warned=${past.warned}, ${past.nodes} nodes, ${past.edges} edges`);

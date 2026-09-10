@@ -8,6 +8,7 @@
 :root {
   color-scheme: light;
   --plane: var(--color-gray-100);
+  --paper: #ffffff;
   --sunken: #e9e8e3;
   --ink: var(--color-gray-950);
   --ink2: var(--color-gray-700);
@@ -34,6 +35,7 @@
 :root.dark {
   color-scheme: dark;
   --plane: var(--color-gray-950);
+  --paper: var(--color-gray-900);
   --sunken: #131312;
   --ink: #ffffff;
   --ink2: var(--color-gray-300);

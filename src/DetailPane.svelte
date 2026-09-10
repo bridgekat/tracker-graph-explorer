@@ -36,7 +36,6 @@
     "hover:bg-gray-100 dark:hover:bg-gray-800";
   const MONO = "font-mono text-[11px] break-all";
   const MUTED = "text-xs text-gray-500";
-  /* the API docs are another site, so they open in another tab */
   const EXT = { target: "_blank", rel: "noopener noreferrer" };
 </script>
 
@@ -60,11 +59,7 @@
     <h3 class="text-base font-semibold text-gray-950 dark:text-white">{group.label}</h3>
     <div class="mt-1 {MONO} text-gray-500">module {group.name.split("/").join(".")}</div>
 
-    {#if docsRoot && attached}
-      <Button size="xs" color="alternative" class="mt-3" href={moduleDocs(group.name)} {...EXT}>
-        API docs<ArrowUpRightFromSquareOutline class="ms-1.5 h-3 w-3" />
-      </Button>
-    {/if}
+    {#if docsRoot && attached}{@render docs(moduleDocs(group.name))}{/if}
 
     <div class="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
       {#each states as s}
@@ -132,26 +127,9 @@
         onclick={() => copy(decl.id)}>{copied ? "copied" : "copy"}</Button
       >
     </div>
-    <div class="mt-3 flex flex-wrap items-center gap-2">
-      <Button
-        size="xs"
-        color="alternative"
-        onclick={() => {
-          app.mode = "tree";
-          select({ t: 1, i: decl.i }, true);
-        }}>Show in the graph</Button
-      >
-      {#if docsRoot && decl.state !== "open"}
-        <Button
-          size="xs"
-          color="alternative"
-          href={declDocs(B.tree[decl.g].name, decl.id)}
-          {...EXT}
-        >
-          API docs<ArrowUpRightFromSquareOutline class="ms-1.5 h-3 w-3" />
-        </Button>
-      {/if}
-    </div>
+    {#if docsRoot && decl.state !== "open"}
+      {@render docs(declDocs(B.tree[decl.g].name, decl.id))}
+    {/if}
 
     {#if decl.wrong}
       <h4 class={WARN}>Marked wrong</h4>
@@ -185,6 +163,13 @@
     {/if}
   {/if}
 </div>
+
+<!-- the API docs are another site, so this opens in another tab -->
+{#snippet docs(href)}
+  <Button size="xs" color="alternative" class="mt-3" {href} {...EXT}>
+    API docs<ArrowUpRightFromSquareOutline class="ms-1.5 h-3 w-3" />
+  </Button>
+{/snippet}
 
 {#snippet list(items)}
   <div class="flex flex-col">

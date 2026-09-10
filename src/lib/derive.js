@@ -143,11 +143,11 @@ function buildBase(g) {
 
   /* ---- the declaration graph ---------------------------------- */
   const DE = [], dout = [], din = [];
-  let dangling = 0;
   for (let q = 0; q < D.length; q++) { dout.push([]); din.push([]); }
   g.edges.forEach((e) => {
     const u = didx[e.from], v = didx[e.to];
-    if (u === undefined || v === undefined || u === v) { dangling++; return; }
+    /* an edge naming something the plan does not list has no end to draw from */
+    if (u === undefined || v === undefined || u === v) return;
     DE.push([u, v]);
     dout[u].push(v); din[v].push(u);
   });
@@ -176,7 +176,6 @@ function buildBase(g) {
     tree: T, treeRoots, decl: D, dedges: DE, dout, din,
     meta: {
       nodes: D.length, modules: T.filter((t) => t.decls.length).length,
-      edges: g.edges.length, dangling,
       rootDesc: T[treeRoots[0]].desc
     }
   };
@@ -272,22 +271,22 @@ function reduce(R, pairs) {
   return { red, back };
 }
 
-/* --- the cone around a set of declarations, over the declaration graph --- */
-function cone(base, seeds, dir, radius) {
+/* --- The cone around a set of declarations, over the declaration graph: everything
+   they rest on and everything that rests on them, all the way down and all the way up.
+   Stopping short of that is a picture with an edge that means nothing — a box at the
+   boundary looks like a box that rests on nothing — so the whole of it is drawn, and
+   the drawing asks before it lays out a cone too big to read. --- */
+function cone(base, seeds) {
   const out = new Set(seeds);
-  const R = (radius == null || radius < 0) ? Infinity : radius;
   const expand = (adj) => {
-    let front = seeds.slice(), step = 0;
-    while (front.length && step < R) {
-      const next = [];
-      front.forEach((u) => {
-        adj[u].forEach((v) => { if (!out.has(v)) { out.add(v); next.push(v); } });
-      });
-      front = next; step++;
+    const todo = seeds.slice();
+    while (todo.length) {
+      const u = todo.pop();
+      for (const v of adj[u]) if (!out.has(v)) { out.add(v); todo.push(v); }
     }
   };
-  if (dir !== "up") expand(base.dout);        /* what it rests on */
-  if (dir !== "down") expand(base.din);       /* what rests on it */
+  expand(base.dout);                          /* what they rest on */
+  expand(base.din);                           /* what rests on them */
   return out;
 }
 

@@ -6,8 +6,8 @@
    chrome; this owns one <svg> and redraws it when told to. */
 import * as SC from "./scene.js";
 import {
-  el, css, fmt, plural, textWidth, ellipsis, STATE_LABEL,
-  hueFill, hueLine, hueWash, neutralWash, overlay,
+  el, css, fmt, plural, textWidth, ellipsis, kindHue, STATE_LABEL, FLAGGED,
+  hueFill, hueLine, hueBar, hueWash,
 } from "./util.js";
 
 const H_DECL = 23, H_GROUP = 27, RX = 4, RX_C = 5;
@@ -26,16 +26,17 @@ const refOf = (n) => (n.kind === "group" ? { t: 0, i: n.gi } : { t: 1, i: n.di }
 let fonts = null;
 export function measure(n) {
   if (n.kind === "root") return;
+  /* A group's title is a group's title: an open container writes it in the same hand
+     its box wrote it in, so opening one changes where the title sits and nothing else. */
   fonts ??= {
     decl: `400 11px ${css("--mono")}`,
     group: `600 11px ${css("--sans")}`,
-    head: `600 10.5px ${css("--sans")}`,
   };
   const isGroup = n.kind === "group";
   if (n.expanded) {
     /* an open container takes its size from its contents, but never less than the
        room its own title needs */
-    n.headW = Math.round(textWidth(n.label, fonts.head)) + NUM_W + TOG_W + 26;
+    n.headW = Math.round(textWidth(n.label, fonts.group)) + NUM_W + TOG_W + 26;
     return;
   }
   const font = isGroup ? fonts.group : fonts.decl;
@@ -58,24 +59,35 @@ export function createCanvas({ svg, viewport, on }) {
   svg.appendChild(camG);
   let coneCache = new Map();
   let Z = { k: 1, x: 0, y: 0 };
-  let colour = "area";
   let sel = null, hover = null;
 
-  /* ================= colour ================= */
-  const kindHue = (n) => (n.declKind === "definition" ? 28 : 210);
-  function fillOf(n) {
-    if (colour === "progress") return `var(--nf-${n.state})`;
-    if (colour === "kind" && n.kind === "decl") return hueFill(kindHue(n));
-    return hueFill(n.hue, n.tone);
-  }
-  function lineOf(n) {
-    if (colour === "progress") return `var(--st-${n.state})`;
-    if (colour === "kind" && n.kind === "decl") return hueLine(kindHue(n));
-    return hueLine(n.hue, n.tone);
-  }
-  function washOf(n) {
-    return colour === "progress" ? neutralWash() : hueWash(n.hue, n.tone);
-  }
+  /* ================= colour =================
+
+     A declaration is coloured by what it is: a definition and a theorem are different
+     kinds of thing, and which of the two a box holds is the first thing worth knowing
+     about it. A group holds both, so a kind is not a question it can answer; it is
+     coloured by the area it belongs to instead — the root of the tree picks the family
+     and the area within it picks the shade, so a backbone and its surfaces read apart.
+
+     Whichever hue a box gets, it gets it in two strengths: the bar is the hue and the
+     ground is the hue let down to a tint. A group's bar is how much of what is inside
+     it is proved. A declaration is proved or it is not, so its bar is all or nothing,
+     and the two strengths are the whole of what it can say: the kind's colour where
+     the work is done, a pale version of it where it is still open.
+
+     The states that are not simply "not done yet" would be lost in that, so a
+     declaration carrying one says it in its outline instead — in graph.css, from the
+     same token every other state colour on the page comes from, rather than as an
+     exception carried through the hue arithmetic here. */
+  const hueOf = (n) => (n.kind === "decl" ? kindHue(n.declKind) : n.hue);
+  const toneOf = (n) => (n.kind === "decl" ? 0 : n.tone);
+  /* A group's bar is a share of it, drawn over its ground as a rect of its own. A
+     declaration is proved or it is not, so its bar is the whole box or none of it: it
+     needs no rect, only the one colour or the other. */
+  const fillOf = (n) => (n.kind === "decl" && n.proved ? barOf(n) : hueFill(hueOf(n), toneOf(n)));
+  const barOf = (n) => hueBar(hueOf(n), toneOf(n));
+  const lineOf = (n) => hueLine(hueOf(n), toneOf(n));
+  const washOf = (n) => hueWash(n.hue, n.tone);
 
   /* ================= drawing ================= */
   /* draws the scene into a new group; whoever had the old one takes it away.
@@ -96,15 +108,15 @@ export function createCanvas({ svg, viewport, on }) {
     paintHover();
   }
 
-  /* A new colour dimension, or a new theme, changes what every box is painted with
-     but not what is drawn: repaint in place, so the change can ease rather than cut. */
+  /* A new theme changes what every box is painted with but not what is drawn:
+     repaint in place, so the change can ease rather than cut. */
   function recolour() {
     S.nodes.forEach((n) => {
       const g = elOf.get(n.id);
       if (!g) return;
       const set = (cls, attr, v) => { for (const c of g.children) if (c.classList.contains(cls)) c.setAttribute(attr, v); };
       set("ex-fill", "fill", n.expanded ? washOf(n) : fillOf(n));
-      set("ex-prog", "fill", overlay());
+      set("ex-prog", "fill", barOf(n));
       set(n.expanded ? "ex-cbg" : "ex-box", "stroke", lineOf(n));
       set("ex-crule", "stroke", lineOf(n));
     });
@@ -117,7 +129,8 @@ export function createCanvas({ svg, viewport, on }) {
       g = el("g", { class: "ex-root" });
     } else {
       g = el("g", {
-        class: "ex-node " + (n.kind === "group" ? "grp" : "decl") + (n.expanded ? " open" : ""),
+        class: "ex-node " + (n.kind === "group" ? "grp" : "decl") + (n.expanded ? " open" : "")
+          + (n.kind === "decl" && FLAGGED[n.state] ? " flag-" + n.state : ""),
         transform: `translate(${r2(n.x)},${r2(n.y)})`,
         tabindex: "-1", role: "button", "aria-label": aria(n),
       });
@@ -142,10 +155,10 @@ export function createCanvas({ svg, viewport, on }) {
      while it animates from what it was to what it is. */
   function drawBox(g, n) {
     const isGroup = n.kind === "group", P = g.__parts = {};
-    g.appendChild(clipFor(n, P, RX));
+    if (isGroup) g.appendChild(clipFor(n, P, RX));
     g.appendChild(P.fill = el("rect", { class: "ex-fill", x: 0, y: 0, rx: RX, fill: fillOf(n) }));
     if (isGroup) g.appendChild(P.prog = progress(n));
-    /* the outline last, so the shading stops at it rather than runs over it */
+    /* the outline last, so the bar stops at it rather than runs over it */
     g.appendChild(P.box = el("rect", { class: "ex-box", x: 0, y: 0, rx: RX, fill: "none", stroke: lineOf(n) }));
     g.appendChild(P.lab = el("text", {
       class: "ex-lab", x: 8, "text-anchor": isGroup ? "start" : "middle",
@@ -167,7 +180,7 @@ export function createCanvas({ svg, viewport, on }) {
     }));
     g.appendChild(P.box = el("rect", { class: "ex-cbg", x: 0, y: 0, rx: RX_C, fill: "none", stroke: lineOf(n) }));
     g.appendChild(el("text", { class: "ex-chead", x: 8, y: SC.HEAD - 6.5 },
-      ellipsis(n.label, fonts.head, Math.max(20, n.w - NUM_W - TOG_W - 18))));
+      ellipsis(n.label, fonts.group, Math.max(20, n.w - NUM_W - TOG_W - 18))));
     g.appendChild(P.num = el("text", { class: "ex-cnum", y: SC.HEAD - 6.5, "text-anchor": "end" }, shortNum(n.count)));
     g.appendChild(P.tog = toggle(n, P));
     geometry(g, n, n.w, n.h);
@@ -180,7 +193,9 @@ export function createCanvas({ svg, viewport, on }) {
      the container's was, rather than spreading over the whole. */
   function geometry(g, n, w, h) {
     const P = g.__parts, strip = n.expanded ? SC.HEAD : Math.min(h, n.h);
-    for (const r of [P.clip, P.fill, P.box]) { r.setAttribute("width", r2(w)); r.setAttribute("height", r2(h)); }
+    for (const r of [P.clip, P.fill, P.box]) {
+      if (r) { r.setAttribute("width", r2(w)); r.setAttribute("height", r2(h)); }
+    }
     if (P.prog) {
       P.prog.setAttribute("width", r2(Math.max(0, w * (n.proved / Math.max(1, n.count)))));
       P.prog.setAttribute("height", r2(strip));
@@ -202,7 +217,7 @@ export function createCanvas({ svg, viewport, on }) {
     }
   }
 
-  /* How far a box is filled is how much of what is inside it is proved. The fill is
+  /* How far a box is filled is how much of what is inside it is proved. The bar is
      clipped by the box itself, so it ends in the box's own corners rather than in
      corners of its own, and it is drawn under the label rather than beside it. */
   function clipFor(n, P, rx) {
@@ -212,7 +227,7 @@ export function createCanvas({ svg, viewport, on }) {
     return defs;
   }
   function progress(n) {
-    return el("rect", { class: "ex-prog", x: 0, y: 0, fill: overlay(), "clip-path": `url(#${clipId(n)})` });
+    return el("rect", { class: "ex-prog", x: 0, y: 0, fill: barOf(n), "clip-path": `url(#${clipId(n)})` });
   }
 
   /* the one control that opens and closes a node, with a hit area of its own */
@@ -231,7 +246,7 @@ export function createCanvas({ svg, viewport, on }) {
       return `${n.short}, ${plural(n.count, "result")}, ${STATE_LABEL[n.state]}`
         + (n.expanded ? ", open" : ". Enter to open it.");
     }
-    return `${n.name}, ${n.declKind}, ${STATE_LABEL[n.state]}.`;
+    return `${n.name}, ${n.declKind}, ${STATE_LABEL[n.state]}. Enter draws its neighbourhood.`;
   }
 
   /* ---------- edges ---------- */
@@ -583,21 +598,39 @@ export function createCanvas({ svg, viewport, on }) {
     on.zoom(Z.k);
   }
   const size = () => ({ w: viewport.clientWidth || 900, h: viewport.clientHeight || 600 });
+  /* where the viewport sits on the page. It only moves when it resizes, and syncSize is
+     what hears about that, so the corner is taken there rather than on every event that
+     has to turn a page coordinate into a drawing one. */
+  let corner = { x: 0, y: 0 };
+  /* The drawing is the whole viewport, and the panes float on top of it: it keeps its
+     width whether they are open or shut, so folding one uncovers what was already
+     drawn there rather than laying anything out again. What the camera aims at is not
+     that whole width but the part of it no pane is over — fitted to the whole, a graph
+     would put a third of itself behind them. Panning is left alone: sliding something
+     under a pane costs nothing, and the way back is to fold the pane. */
+  let inset = { l: 0, r: 0 };
+  function view() {
+    const s = size(), room = s.w * 0.4;
+    const l = Math.min(inset.l, room), r = Math.min(inset.r, room);
+    return { x: l, y: 0, w: Math.max(80, s.w - l - r), h: s.h };
+  }
   function syncSize() {
+    const r = viewport.getBoundingClientRect();
+    corner = { x: r.left, y: r.top };
     const v = size();
     svg.setAttribute("viewBox", `0 0 ${v.w} ${v.h}`);
   }
   function fit() {
     if (!S) return;
-    const v = size();
+    const v = view();
     Z.k = clampK(Math.min(1.3, v.w / (S.width + 2 * MARGIN), v.h / (S.height + 2 * MARGIN)));
-    Z.x = (v.w - S.width * Z.k) / 2;
-    Z.y = (v.h - S.height * Z.k) / 2;
+    Z.x = v.x + (v.w - S.width * Z.k) / 2;
+    Z.y = v.y + (v.h - S.height * Z.k) / 2;
     applyTransform();
   }
   function zoomBy(mult, cx, cy) {
-    const v = size();
-    if (cx == null) { cx = v.w / 2; cy = v.h / 2; }
+    const v = view();
+    if (cx == null) { cx = v.x + v.w / 2; cy = v.y + v.h / 2; }
     const k2 = clampK(Z.k * mult);
     Z.x = cx - (cx - Z.x) * (k2 / Z.k);
     Z.y = cy - (cy - Z.y) * (k2 / Z.k);
@@ -605,10 +638,10 @@ export function createCanvas({ svg, viewport, on }) {
     applyTransform();
   }
   function centreOn(n, k) {
-    const v = size();
+    const v = view();
     if (k) Z.k = clampK(k);
-    Z.x = v.w / 2 - (n.ax + n.w / 2) * Z.k;
-    Z.y = v.h / 2 - (n.ay + n.h / 2) * Z.k;
+    Z.x = v.x + v.w / 2 - (n.ax + n.w / 2) * Z.k;
+    Z.y = v.y + v.h / 2 - (n.ay + n.h / 2) * Z.k;
     applyTransform();
   }
   const screenOf = (n) => [n.ax * Z.k + Z.x, n.ay * Z.k + Z.y];
@@ -616,17 +649,17 @@ export function createCanvas({ svg, viewport, on }) {
      out only as far as it takes to see all of what appeared, and then slide it back
      inside the viewport. */
   function holdAt(n, at) {
-    const v = size(), m = 16;
+    const v = view(), m = 16;
     const need = Math.min((v.w - 36) / Math.max(1, n.w), (v.h - 36) / Math.max(1, n.h));
     if (need < Z.k) Z.k = Math.max(0.16, need);
     Z.x = at[0] - n.ax * Z.k;
     Z.y = at[1] - n.ay * Z.k;
     const x1 = (n.ax + n.w) * Z.k + Z.x, y1 = (n.ay + n.h) * Z.k + Z.y;
-    if (x1 > v.w - m) Z.x -= x1 - (v.w - m);
-    if (y1 > v.h - m) Z.y -= y1 - (v.h - m);
+    if (x1 > v.x + v.w - m) Z.x -= x1 - (v.x + v.w - m);
+    if (y1 > v.y + v.h - m) Z.y -= y1 - (v.y + v.h - m);
     const x0 = n.ax * Z.k + Z.x, y0 = n.ay * Z.k + Z.y;
-    if (x0 < m) Z.x += m - x0;
-    if (y0 < m) Z.y += m - y0;
+    if (x0 < v.x + m) Z.x += v.x + m - x0;
+    if (y0 < v.y + m) Z.y += v.y + m - y0;
     applyTransform();
   }
 
@@ -661,7 +694,18 @@ export function createCanvas({ svg, viewport, on }) {
       activate(n);
     });
   }
+  /* An open container is mostly the room its children sit in, and a pointer crossing
+     that room on its way to one of them is not asking about the container. Its title
+     strip is the part of it that is the container itself, so that is the part that
+     answers; a box that is not open is all title, and answers anywhere.
+
+     Where the strip is comes from where the box is, not from measuring the element it
+     was drawn as: the measurement would force a layout on every move of the pointer,
+     and would read a rectangle still in motion while one scene becomes the next. */
+  const onTitle = (e, n) =>
+    !n.expanded || e.clientY - corner.y - (n.ay * Z.k + Z.y) <= SC.HEAD * Z.k;
   function tipFor(e, n) {
+    if (!onTitle(e, n)) { on.tip(null); return; }
     const c = coneOf(n), rows = [];
     if (n.kind === "group") {
       rows.push({ text: plural(n.count, "result") + (n.expanded ? " · open" : "") });
@@ -670,6 +714,7 @@ export function createCanvas({ svg, viewport, on }) {
     } else {
       rows.push({ text: `${n.declKind} in ${n.group}` });
       rows.push({ state: n.state, text: STATE_LABEL[n.state] });
+      rows.push({ text: "↵ draws its neighbourhood" });
     }
     rows.push({ text: `rests on ${c.below.size} · ${c.above.size} rest on it` });
     on.tip({ title: n.kind === "group" ? n.short : n.name, rows, x: e.clientX, y: e.clientY });
@@ -710,8 +755,8 @@ export function createCanvas({ svg, viewport, on }) {
   }
   function onWheel(e) {
     e.preventDefault();
-    const r = viewport.getBoundingClientRect();
-    zoomBy(Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.02 : 0.0016)), e.clientX - r.left, e.clientY - r.top);
+    zoomBy(Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.02 : 0.0016)),
+      e.clientX - corner.x, e.clientY - corner.y);
   }
   function onLeave() {
     if (down) return;
@@ -785,9 +830,11 @@ export function createCanvas({ svg, viewport, on }) {
       else prev?.sceneG.remove();
     },
     setSelection(ref) { sel = ref; paintFocus(); },
-    /* the colours are sampled rather than inherited, so a new dimension — or a new
-       theme — has to be painted on */
-    setColour(mode) { colour = mode; if (S) recolour(); },
+    /* how much of the drawing each side pane is over, which only the shell knows */
+    setInset(l, r) { inset = { l, r }; },
+    /* the colours are sampled rather than inherited, so a new theme has to be
+       painted on rather than followed */
+    repaint() { if (S) recolour(); },
     setEdges(mode) { svg.classList.toggle("only-essential", mode === "red"); },
     reveal(ref) {
       const n = nodeFor(ref);

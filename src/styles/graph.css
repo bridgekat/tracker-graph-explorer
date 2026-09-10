@@ -9,6 +9,16 @@
   background: var(--sunken)
 }
 
+/* A neighbourhood is one declaration's cone drawn on its own, not the graph opened to
+   a dozen boxes, and the ground says which you are looking at before you read anything:
+   the plane is dotted, and let down a shade under the dots. */
+.ex-viewport.cone {
+  background-image:
+    radial-gradient(var(--edgefaint) 1px, transparent 1px),
+    linear-gradient(var(--wash), var(--wash));
+  background-size: 15px 15px, auto
+}
+
 .ex-viewport:focus-visible {
   outline: 2px solid var(--s1);
   outline-offset: -2px
@@ -40,7 +50,7 @@
 
 /* ---- the drawing ---- */
 /* Every change of colour on the canvas — a hover, a selection, the cone lighting up,
-   another colour dimension, the theme — eases over the same short moment. The look
+   a box finishing, the theme — eases over the same short moment. The look
    of a thing is set by attributes and variables, and a transition follows the computed
    value whichever way it was changed. */
 #exSvg {
@@ -88,14 +98,8 @@
   stroke-width: 1
 }
 
-.ex-chead {
-  fill: var(--ink2);
-  font: 600 10.5px var(--sans);
-  pointer-events: none
-}
-
 .ex-cnum {
-  fill: var(--ink3);
+  fill: var(--ink);
   font: 400 9.5px var(--mono);
   pointer-events: none
 }
@@ -119,14 +123,30 @@
   pointer-events: none
 }
 
-.ex-node.grp>.ex-lab {
+/* a group's title is a group's title, open or shut */
+.ex-node.grp>.ex-lab,
+.ex-chead {
   font: 600 11px var(--sans)
 }
 
 .ex-num {
   font: 400 9.5px var(--mono);
-  fill: var(--ink3);
+  fill: var(--ink);
   pointer-events: none
+}
+
+/* Not every state is a stage of progress. A declaration resting on extra axioms, or one
+   marked wrong, is an alarm, and how far a box is filled counts only what is proved —
+   so it would file both with the merely unfinished. The outline says otherwise, from
+   the same token every other state colour on the page comes from. A stroke the drawing
+   sets is a presentation attribute, which is why these override it; the selection is
+   later still, so picking a flagged box shows the selection. */
+.ex-node.flag-axioms>.ex-box {
+  stroke: var(--st-axioms)
+}
+
+.ex-node.flag-wrong>.ex-box {
+  stroke: var(--st-wrong)
 }
 
 .ex-prog {
@@ -139,7 +159,7 @@
 }
 
 .ex-togi {
-  stroke: var(--ink3);
+  stroke: var(--ink);
   stroke-width: 1.5;
   stroke-linecap: round;
   fill: none;
@@ -148,10 +168,6 @@
 
 .ex-toggle:hover .ex-tog {
   fill: var(--wash)
-}
-
-.ex-toggle:hover .ex-togi {
-  stroke: var(--ink)
 }
 
 .ex-node.sel>.ex-box,

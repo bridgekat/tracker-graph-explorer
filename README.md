@@ -38,14 +38,23 @@ as the plan does — a library holding an area holding a module holding its theo
 left, and depth reads along the page. An edge that has to run the other way is one the layering
 could not honour, and it is drawn dashed.
 
-**How far a group is done is how far it is filled.** The proved share of a box is shaded — a wash of
-black, of white in the dark — clipped by the box, so it runs edge to edge and ends in the box's own
-corners; on an open container it fills the title strip instead. Shading is ink rather than a colour,
-so it cannot clash with the fill: the colour of a box still says one thing, not two.
+**How far a box is done is how far it is filled.** Every box has one hue in two strengths: the
+proved share of it is drawn in the hue itself, and the rest is the same hue let down to a tint. The
+bar is clipped by the box, so it runs edge to edge and ends in the box's own corners; on an open
+container it fills the title strip instead. Colour says what a box is and strength says how far it
+has got, so the two never have to share a channel.
 
-That one thing is area, progress or kind. Area is two questions at once, since the root of the tree
-picks the hue family — so a backbone and its surfaces read apart at a glance — and the area within
-it picks the shade.
+**What a box is depends on which kind of box it is.** A declaration is coloured by what it is — a
+definition and a theorem are different kinds of thing, and which of the two a box holds is the first
+thing worth knowing about it. A declaration is proved or it is not, so its bar is all or nothing:
+the kind's colour where the work is done, a pale version of it where it is still open. A group holds
+both kinds, so a kind is not a question it can answer; it is coloured by its area instead, which is
+two questions at once, since the root of the tree picks the hue family — so a backbone and its
+surfaces read apart at a glance — and the area within it picks the shade.
+
+The states that are not simply "not done yet" would be lost in a bar that only counts what is
+proved, so a declaration resting on extra axioms, or marked wrong, says so in its outline instead of
+in its fill.
 
 Clicking a box lights everything it touches, above and below, and dims the rest; the lit edges are
 ink rather than a colour of their own, since the colours already mean something here. A shut box
@@ -54,18 +63,44 @@ over what really touches what, and only then mapped onto whatever boxes are on s
 marks the box under the pointer and no more: a drawing that rearranges its emphasis every time the
 pointer crosses it is hard to read.
 
-Three panes fill the window. The **index** on the left is the plan's tree with a search over every
+Three panes fill the window, and the **canvas** is the whole of it: the other two float over the
+drawing rather than dividing it, so the drawing is the full width whether they are open or shut and
+folding one uncovers what was already there instead of laying it out again. What the camera aims at
+is the part no pane is over — fitted to the whole width, a graph would put a third of itself behind
+them — while panning is left alone, since sliding something under a pane costs nothing.
+
+The **index** on the left is the plan's tree with a search over every
 group and every declaration; picking a result opens the tree to it and puts it in the middle of the
-canvas. The **canvas** pans and zooms, from anywhere on it, boxes included. The **detail** on the
+canvas, and the canvas pans and zooms from anywhere on it, boxes included. The **detail** on the
 right is the node itself: its state, its module, its doc comment, its source, and the declarations
 it rests on and that rest on it, each one a link to go there — and, where the build was told where
-the API documentation lives, a link out to the declaration's own entry in it. Both side panes drag
-wider from the line beside them, double-click back to their old width, and fold away entirely.
+the API documentation lives, a link out to the declaration's own entry in it.
 
-Two ways to look. **Whole graph** draws the current expansion of the tree. **Neighbourhood** drops
-the tree and draws one declaration's cone at full detail — one, two, three steps, or the whole of
-it, upstream, downstream or both. Four thousand declarations are a hairball; one theorem's cone is
-a diagram, and it is the level at which "why is this here" has an answer.
+Both side panes drag wider from the strip at their inner edge — the pane's own colour, marked only
+by the grip in the middle of it. Each folds away entirely from the button at its end of the row that
+floats across the top of the drawing, which is also what brings it back: the chevron points the way
+the pane is about to go, and a folded pane comes back to the width it had.
+
+**One bar, and it is the file's.** What steers the drawing either belongs to the drawing and floats
+on it — the zoom along the bottom, the fold buttons and a neighbourhood's card along the top — or is
+a one-off you ask for when you want it, and lives in the canvas's right-click menu: how far to open
+the whole tree at once, and whether to draw every edge or only the ones the drawing cannot do
+without. Shift+F10 and the menu key reach the same menu. Everything floating is inset by whatever
+the panes cover, so none of it ever competes with them; fold a pane and it all grows into what is
+left. A row of controls held permanently above a drawing is a row of controls in the way of it.
+
+Two ways to look. The **whole graph** is the current expansion of the tree. A **neighbourhood**
+drops the tree and draws one declaration's cone at full detail: everything it rests on and
+everything that rests on it, all the way down and all the way up. A cone cut off after so many steps
+has a boundary that lies — a box at the edge of it looks like a box that rests on nothing — so there
+is nothing to set, and the page asks first if the cone is too big to read. Four thousand
+declarations are a hairball; one theorem's cone
+is a diagram, and it is the level at which "why is this here" has an answer.
+
+A neighbourhood is a different drawing rather than a setting, so nothing switches to one: Enter, or
+a double-click, on a box draws that box's cone. While you are in one the ground goes dotted, and a
+card in that floating row says what the cone is of and carries the way back out to the whole graph,
+which comes back as you left it.
 
 ## What it derives
 
@@ -131,12 +166,13 @@ become markup. There is no `{@html}` anywhere, and a test asserts it.
 
 | file | what it is |
 |---|---|
-| `src/App.svelte` | the window: the bars and the three panes |
+| `src/App.svelte` | the window: the bars, and the two panes floating over the drawing |
+| `src/Grip.svelte` | the strip a side pane is dragged wider from |
 | `src/IndexPane.svelte` | the search and the plan's tree |
 | `src/DetailPane.svelte` | whatever is selected, in full |
 | `src/Prose.svelte`, `src/Inline.svelte` | a Lean doc comment, from marked's tokens |
 | `src/StateDot.svelte` | the coloured dot that says what state a thing is in |
-| `src/Canvas.svelte` | the viewport, its overlays and the tooltip |
+| `src/Canvas.svelte` | the viewport, the chrome floating on it and the tooltip |
 | `src/app.css`, `src/styles/` | the palette, the tokens and the whole of the look, the canvas included |
 | `src/lib/derive.js` | reading a graph, and the transitive reduction of a container's edges — no DOM in it |
 | `src/lib/scene.js` | the nested scene: what boxes exist for an expansion state, and where |

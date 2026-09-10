@@ -7,6 +7,10 @@ export const STATE_LABEL = {
   proved: "proved", stated: "stated", open: "open",
   axioms: "extra axioms", wrong: "marked wrong",
 };
+/* The states that are not a stage of progress but an alarm. A bar that counts what is
+   proved files them with the merely unfinished, so they are said another way — see the
+   flag rules in styles/graph.css. */
+export const FLAGGED = { axioms: 1, wrong: 1 };
 
 export function el(tag, attrs, text) {
   const e = document.createElementNS(NS, tag);
@@ -19,35 +23,46 @@ export const fmt = (n) => (n || 0).toLocaleString("en-US");
 export const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 export const plural = (n, one, many) => `${fmt(n)} ${n === 1 ? one : (many || one + "s")}`;
 
-/* ---------- colour ---------- */
+/* ---------- colour ----------
+   One hue in two strengths paints every box. The strong one is the bar — the proved
+   share of what is inside the box — and the tint is the ground it runs over, so a box
+   that is done reads solid and one that is not reads pale. Colour says what a thing is
+   and strength says how far it has got, and neither has to borrow the other's channel.
+   `tone` is the second channel of the hue itself: neighbours in one family sit a few
+   degrees apart, which is not enough on its own, so they step in weight as well. */
 /* One signal for the whole page: main.js resolves the system preference to this
    class before mounting, and the theme button owns it after that. The drawing samples
    the tokens rather than inheriting them, so it has to ask the same question the CSS
-   does — reading the media query here is what left the graph in light colours. */
+   does — reading the media query here is what left the graph in light colours.
+
+   The canvas is repainted when the theme changes and can take the answer as it finds
+   it. A component cannot: nothing it renders depends on a class on <html>, so it would
+   keep the colours it first drew. Those callers pass `dark` themselves, from the state
+   that changing the theme changes, and the recompute follows from that. */
 function isDark() {
   return document.documentElement.classList.contains("dark");
 }
-/* A hue from the tree turned into the fill and the stroke of a node. `tone` is the
-   second channel: neighbours in one family sit a few degrees apart, which is not
-   enough on its own, so they step in weight as well. */
-export function hueFill(h, tone = 0) {
-  return isDark()
+/* What a declaration is decides its hue: a definition and a theorem are different kinds
+   of thing, and which of the two a box holds is the first thing worth knowing about it.
+   A group holds both, so a kind is not a question it can answer, and it takes the hue of
+   its area instead — which derive.js works out per project, and this cannot. */
+export const kindHue = (declKind) => (declKind === "definition" ? 28 : 210);
+
+/* the ground of a box: the hue let down to a tint, which is all an unproved box shows */
+export function hueFill(h, tone = 0, dark = isDark()) {
+  return dark
     ? `hsl(${h} ${44 - tone * 9}% ${21 + tone * 4}%)`
     : `hsl(${h} ${70 - tone * 14}% ${92 - tone * 4}%)`;
 }
-export function hueLine(h, tone = 0) {
-  return isDark()
+export function hueLine(h, tone = 0, dark = isDark()) {
+  return dark
     ? `hsl(${h} ${58 - tone * 8}% ${62 - tone * 7}%)`
     : `hsl(${h} ${58 - tone * 8}% ${42 + tone * 7}%)`;
 }
-/* How much of a box is finished is shown by shading that much of it, and shading is
-   ink rather than a colour: a wash of black — of white, in the dark — over whatever
-   the box is already painted. It cannot clash with the fill, because it is the fill. */
-export const overlay = () => (isDark() ? "rgba(255, 255, 255, .13)" : "rgba(0, 0, 0, .11)");
-/* the same idea where there is no fill to darken: the bars in the index sit on a
-   plain track, so they carry the hue themselves */
-export function hueBar(h, tone = 0) {
-  return isDark()
+/* the hue itself: the proved share of a box on the canvas, and the same bar in the
+   index. Deep enough to read as the colour of the thing, light enough to write on. */
+export function hueBar(h, tone = 0, dark = isDark()) {
+  return dark
     ? `hsl(${h} ${46 - tone * 7}% ${44 - tone * 4}%)`
     : `hsl(${h} ${52 - tone * 9}% ${66 + tone * 4}%)`;
 }
@@ -56,9 +71,6 @@ export function hueBar(h, tone = 0) {
 export function hueWash(h, tone = 0) {
   return isDark() ? `hsl(${h} ${30 - tone * 5}% 12%)` : `hsl(${h} ${44 - tone * 8}% 97%)`;
 }
-/* a container drawn by state gets no colour of its own: the states of what is inside
-   it are the point, and a wash would fight them */
-export const neutralWash = () => (isDark() ? "#141413" : "#f8f8f5");
 
 /* ---------- text ---------- */
 let mc = null;

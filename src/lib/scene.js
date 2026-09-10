@@ -33,7 +33,7 @@ function assemble(B, o) {
       kind: "decl", di, parent, children: null, expanded: false,
       label: d.label, name: d.id, group: t.name, sort: d.id,
       count: 1, proved: d.state === "proved" ? 1 : 0, state: d.state,
-      declKind: d.kind, hue: t.hue, tone: t.tone,
+      declKind: d.kind,
     });
     owner[di] = n.id;
     return n;

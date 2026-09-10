@@ -1,0 +1,167 @@
+/* The window: two panes floating over one drawing, and the strips they are dragged by.
+
+   The canvas is the whole of the space under the toolbar and keeps it whether a pane
+   is open or shut, so folding one uncovers the drawing rather than laying it out again.
+   What that costs the drawing is cover, not room, and the whole of it is --pane-l and
+   --pane-r: the width each side hides, its grip included. Everything that has to stay
+   clear of a pane — the chrome floating over the drawing, and where the camera aims —
+   is measured from those two, so there is one number per side and no second copy of it.
+
+   They are registered rather than plain, which is what lets a fold ease: a custom
+   property only animates if the browser has been told what kind of value it holds. Only
+   a fold: a drag eased is a pane a frame and a half behind the pointer, which reads as
+   lag, so the transition is off for as long as one is happening. */
+@property --pane-l {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --pane-r {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+.ex-shell {
+  --grip: 10px;
+  transition: --pane-l 150ms ease-out, --pane-r 150ms ease-out
+}
+
+.ex-shell.ex-sizing {
+  transition: none
+}
+
+/* A pane is as wide as it covers, less its grip; folded, it covers nothing. It is
+   hidden as well as narrow, so that nothing inside it is still in the tab order. */
+.ex-pane {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden
+}
+
+.ex-pane-left {
+  left: 0;
+  width: max(0px, calc(var(--pane-l) - var(--grip)))
+}
+
+.ex-pane-right {
+  right: 0;
+  width: max(0px, calc(var(--pane-r) - var(--grip)))
+}
+
+.ex-pane-shut {
+  visibility: hidden
+}
+
+/* What anything floating over the drawing is drawn on: the bar's own surface, carried
+   out onto the plane, so a button or a card reads as chrome rather than as part of the
+   picture. Said here because a component's own constant cannot cross into another. */
+.ex-paper {
+  background: var(--paper)
+}
+
+.ex-card {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper)
+}
+
+.ex-grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  width: var(--grip);
+  cursor: col-resize
+}
+
+.ex-grip-left {
+  left: calc(var(--pane-l) - var(--grip))
+}
+
+.ex-grip-right {
+  right: calc(var(--pane-r) - var(--grip))
+}
+
+.ex-grip:focus-visible {
+  outline: 2px solid var(--s1);
+  outline-offset: -2px
+}
+
+/* Three dots, and each one a rounded box rather than a stop in a gradient: a gradient
+   is sampled per pixel and comes out with a stair-stepped edge, where a border-radius
+   is drawn by the rasteriser and comes out smooth. One dot is the element and the other
+   two are its shadows, all of them the one colour, so what a hover or a drag changes is
+   that colour and nothing else. */
+.ex-grip::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  color: var(--ink3);
+  background: currentColor;
+  box-shadow: 0 -6px currentColor, 0 6px currentColor;
+  transition: color 120ms ease-out
+}
+
+.ex-grip:hover::after,
+.ex-grip:focus-visible::after {
+  color: var(--ink)
+}
+
+.ex-grip:active::after {
+  color: var(--s1)
+}
+
+/* Everything that floats over the drawing sits in a row across the part of it no pane
+   is over, so it never competes with them: fold a pane and the rows grow into what it
+   leaves. A row is not there for the pointer — only what is in it is — so the canvas
+   still drags from the gaps between.
+
+   Three columns rather than a flex line, so that what is in the middle is in the middle
+   of the drawing and not merely after whatever came before it. The outer two take what
+   is left over evenly, which is what centres it; the middle one is free to shrink, so a
+   long name truncates rather than pushing an end out of reach. */
+.ex-hud {
+  position: absolute;
+  top: 8px;
+  left: calc(var(--pane-l) + 8px);
+  right: calc(var(--pane-r) + 8px);
+  z-index: 20;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  align-items: start;
+  gap: 8px;
+  pointer-events: none
+}
+
+/* the same row, along the bottom */
+.ex-hud-foot {
+  top: auto;
+  bottom: 8px;
+  align-items: end
+}
+
+.ex-hud>* {
+  pointer-events: auto
+}
+
+.ex-hud>.ex-hud-l {
+  grid-column: 1;
+  justify-self: start
+}
+
+.ex-hud>.ex-hud-c {
+  grid-column: 2
+}
+
+.ex-hud>.ex-hud-r {
+  grid-column: 3;
+  justify-self: end
+}

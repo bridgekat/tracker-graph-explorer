@@ -4,7 +4,7 @@
   import { Search } from "flowbite-svelte";
   import StateDot from "./StateDot.svelte";
   import { app, select, toggleGroup } from "./lib/state.svelte.js";
-  import { fmt, plural, hueBar } from "./lib/util.js";
+  import { fmt, plural, hueBar, hueFill, hueLine, kindHue } from "./lib/util.js";
 
   const LIST_CAP = 400;
   let query = $state("");
@@ -73,6 +73,9 @@
   const HOVER = "hover:bg-gray-100 dark:hover:bg-gray-800";
   const SEL = "bg-gray-100 dark:bg-gray-800";
   const KIND = "ms-auto shrink-0 text-[10px] text-gray-500";
+  /* A declaration is coloured by what it is on the canvas; the same colour says the same
+     thing here, from the same hue, so a row and its box read as the one declaration. */
+  const BADGE = "ms-auto shrink-0 rounded-sm px-1 text-[9.5px] font-medium";
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col">
@@ -165,12 +168,13 @@
                 <i
                   class="block h-full"
                   style="width: {((row.t.byState.proved / row.t.sub) * 100).toFixed(1)}%;
-                         background: {hueBar(row.t.hue, row.t.tone)}"
+                         background: {hueBar(row.t.hue, row.t.tone, app.dark)}"
                 ></i>
               </span>
             </button>
           </div>
         {:else}
+          {@const hue = kindHue(row.d.kind)}
           <button
             class="{ROW} {HOVER} w-full {isSel(1, row.d.i) ? SEL : ''}"
             style="padding-left: {20 + row.level * 13}px"
@@ -178,7 +182,10 @@
           >
             <StateDot state={row.d.state} />
             <span class="truncate font-mono" title={row.d.id}>{row.d.label}</span>
-            <span class={KIND}>{row.d.kind === "definition" ? "def" : "thm"}</span>
+            <span
+              class={BADGE}
+              style="background: {hueFill(hue, 0, app.dark)}; color: {hueLine(hue, 0, app.dark)}"
+            >{row.d.kind === "definition" ? "def" : "thm"}</span>
           </button>
         {/if}
       {/each}

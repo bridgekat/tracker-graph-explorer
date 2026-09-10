@@ -9,6 +9,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @import "./styles/tokens.css";
+@import "./styles/shell.css";
 @import "./styles/graph.css";
 @import "./styles/prose.css";
 
