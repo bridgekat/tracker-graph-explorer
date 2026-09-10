@@ -368,6 +368,31 @@ try {
       : !docs.href,
     docs.href || "no link");
 
+  /* --- the address bar, and a link back into the page ---
+     A node is addressed one way in this project — the module's path, then the name the
+     thing is declared under — and the page says it in the URL and in the detail pane's
+     own box. The declaration focused above is still the one in the pane, so the address
+     is its. Then a fragment somebody else could have sent: setting one takes the page to
+     the node it names. */
+  const addr = await evaluate(`
+    return { hash: decodeURIComponent(location.hash).slice(1),
+             shown: document.querySelector('#exDetail code').textContent };`);
+  check("the address bar says which node you are on, in the one notation",
+    addr.hash === addr.shown && /^[^,]+\/[^,]+,.*isMinResIterate$/.test(addr.hash),
+    addr.hash || "nothing");
+
+  const landed = await evaluate(`
+    location.hash = '#Numlib/Eigen';
+    await new Promise(r => setTimeout(r, 1200));
+    ${SETTLE}
+    return { title: document.querySelector('#exDetail h3').textContent,
+             sel: [...document.querySelectorAll('#exSvg .ex-node.sel')]
+               .map(e => e.getAttribute('aria-label')) };`);
+  check("a link into the page lands on the node it names",
+    landed.title === "Eigen" && landed.sel.length === 1
+      && landed.sel[0].startsWith("Numlib/Eigen,"),
+    `${landed.title}, outlined ${JSON.stringify(landed.sel)}`);
+
   /* --- the panes float over the drawing, and are dragged wider by their grip --- */
   const gw = await evaluate("return document.getElementById('exSide').getBoundingClientRect().width");
   const grip = await evaluate(

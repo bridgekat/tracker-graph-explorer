@@ -2,10 +2,11 @@
    Input is the documented contract: { groups[], nodes[], edges[] }.
    Everything the page draws is computed here, with no project-specific assumptions.
 
-   Two things live here:
+   Three things live here:
      buildBase   the group tree and the graph between declarations, read once
      reduce      the transitive reduction of one container's edges, with the
                  cycles among them broken first
+     address     how the project writes down which node it means, and reads it back
 
    scene.js calls the second once per container and hands what survives to the
    layout engine; nothing here knows what a container is. */
@@ -268,6 +269,48 @@ function reduce(R, pairs) {
   return { red, back };
 }
 
+/* ================================================================
+   address — how this project writes down which node it means.
+
+     Numlib/Krylov                                      a group
+     Numlib/Krylov/CR,Numlib.Krylov.CR.isMinResIterate  a declaration
+
+   The path to the module, in the notation a module is written in, and then — for a
+   declaration — a comma and the full name it is declared under. Both halves, because
+   neither alone says where a thing is: a Lean name does not say which file it was
+   written in, and a file does not say what is in it. So an address is a module and, if
+   the thing addressed is inside it, the name of the thing inside it. The comma is what
+   tells the two apart, and neither half can hold one.
+
+   A declaration is found by its own name; the module in front of it is not a second
+   condition to satisfy but the context that makes the address legible — a declaration
+   that has since moved to another file is still that declaration, and a link to it
+   should still arrive. A group is found by its path.
+
+   This is the one place the format is written down. Everything that has to name a node
+   — the address bar above all — reads and writes it through here. Somewhere that cannot
+   take a name as it stands hands in an escape, which is applied to each part and never
+   to the punctuation between them: that way a comma inside a name is escaped out of the
+   way of the comma that means "and inside it", and the address still reads as one.
+   ================================================================ */
+function address(base, ref, esc = (s) => s) {
+  const decl = ref.t === 1 ? base.decl[ref.i] : null;
+  const group = base.tree[decl ? decl.g : ref.i];
+  const path = group.name.split("/").map(esc).join("/");
+  return decl ? `${path},${esc(decl.id)}` : path;
+}
+/* the node an address names, or null if this graph does not have it */
+function refAt(base, addr, unesc = (s) => s) {
+  const c = addr.indexOf(",");
+  if (c < 0) {
+    const path = addr.split("/").map(unesc).join("/");
+    const g = base.tree.findIndex((t) => t.name === path);
+    return g < 0 ? null : { t: 0, i: g };
+  }
+  const d = base.decl.findIndex((x) => x.id === unesc(addr.slice(c + 1)));
+  return d < 0 ? null : { t: 1, i: d };
+}
+
 /* --- The cone around a set of declarations, over the declaration graph: everything
    they rest on and everything that rests on them, all the way down and all the way up.
    Stopping short of that is a picture with an edge that means nothing — a box at the
@@ -287,4 +330,4 @@ function cone(base, seeds) {
   return out;
 }
 
-export { STATES, KEY, buildBase, reduce, cone };
+export { STATES, KEY, buildBase, reduce, cone, address, refAt };

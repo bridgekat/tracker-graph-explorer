@@ -35,8 +35,10 @@ export function attachCanvas(c) {
   c.setEdges(app.edges);
   /* A graph baked into the page is read before the canvas exists, so the expansion
      readText chose has nothing to draw it on and rebuild() gave up. Drawing it is this
-     attachment's job; a page that arrives at its graph any other way already has one. */
-  if (app.base) { c.setBase(app.base); rebuild(); }
+     attachment's job; a page that arrives at its graph any other way already has one.
+     Anything selected at this point was selected by the URL and by nothing else, since
+     nobody has had a drawing to click on yet, so this first draw is aimed at it. */
+  if (app.base) { c.setBase(app.base); rebuild(app.sel ? { centreOn: app.sel } : {}); }
 }
 export const zoomBy = (mult) => canvas?.zoomBy(mult);
 export const fit = () => canvas?.fit();
@@ -101,9 +103,12 @@ export function drawAnyway() {
 
 /* ---------- actions ---------- */
 /* open exactly the groups that pass: the top levels, every group, or everything */
-export function openWhere(keep) {
+function openTo(keep) {
   app.open.clear();
   app.base.tree.forEach((t) => { if (keep(t)) app.open.add(t.i); });
+}
+export function openWhere(keep) {
+  openTo(keep);
   app.coneSeed = null;
   rebuild();
 }
@@ -122,6 +127,7 @@ function openDownTo(ref) {
    and picking something in the index is not asking to leave. */
 export function select(ref, reveal = false) {
   app.sel = ref;
+  writeHash();
   if (reveal && ref && !app.coneSeed) {
     const before = app.open.size;
     openDownTo(ref);
@@ -134,6 +140,7 @@ export function select(ref, reveal = false) {
 export function setCone(ref) {
   app.coneSeed = ref;
   app.sel = ref;
+  writeHash();
   rebuild();
 }
 /* Out of a neighbourhood and back to the whole graph, which comes back as it was left:
@@ -144,6 +151,55 @@ export function showTree() {
   app.coneSeed = null;
   rebuild({ centreOn: app.sel });
 }
+
+/* ---------- the address bar ----------
+   Which node you are on is in the URL, so that the way to send someone what you are
+   looking at is to copy the address. The fragment is the node's address and nothing
+   else — TD.address, the project's one way of writing down which node it means:
+
+     #Numlib/Krylov
+     #Numlib/Krylov/CR,Numlib.Krylov.CR.isMinResIterate
+
+   `/` and `,` are legal in a fragment and are what make an address readable, so the
+   address's own punctuation stands as itself and everything else is escaped — a comma
+   inside a name included, or it would read as the one comma that means "and inside it".
+   What is written is a name the graph file gave and never an index, which belongs to the
+   build and moves under a link. An address this graph does not have is ignored rather
+   than reported: a link that has gone stale, or one made against another project's
+   graph, should still open the page.
+
+   The URL is replaced rather than pushed. Pushed, every click on a box would be a step in
+   the history, and the back button would spend the whole session walking out of a drawing
+   nobody navigated away from. */
+function parseHash() {
+  const raw = location.hash.slice(1);
+  if (!raw || !app.base) return null;
+  /* a fragment somebody typed can hold an escape that is not one */
+  try { return TD.refAt(app.base, raw, decodeURIComponent); } catch { return null; }
+}
+function writeHash() {
+  const hash = app.sel ? `#${TD.address(app.base, app.sel, encodeURIComponent)}` : "";
+  if (hash === location.hash) return;
+  history.replaceState(null, "", hash || location.pathname + location.search);
+}
+/* Land on the node a link asks for: selected, with the tree opened down to it so that it
+   is on the canvas. It goes through the state rather than through select(), so that the
+   page a link opens is laid out once and aimed at the node the first time, rather than
+   drawn and then moved. */
+function land(ref) {
+  app.sel = ref;
+  app.coneSeed = null;
+  openDownTo(ref);
+  rebuild({ centreOn: ref });
+}
+/* The URL changed under the page: someone edited it, or followed a link into the page
+   it is already on. Nothing this page writes arrives here — replacing the URL does not
+   raise the event — so this is always somebody else asking to go somewhere. */
+addEventListener("hashchange", () => {
+  const ref = parseHash();
+  if (ref) land(ref);
+});
+
 /* The drawing samples the theme's tokens rather than inheriting them, so a change of
    theme is a change it has to be told about. So does anything a component paints from
    the same arithmetic, which is why the theme is state here and not only a class on
@@ -196,7 +252,12 @@ export function readText(txt, label) {
   canvas?.setBase(base);
   /* the areas: the picture of the project that fits on a screen */
   const depth = base.tree.length > 40 ? 1 : 2;
-  openWhere((t) => t.level < depth);
+  openTo((t) => t.level < depth);
+  /* and then wherever the URL says, which is where this page was opened to go */
+  const ref = parseHash();
+  if (ref) land(ref); else rebuild();
+  /* a link into some other graph is not this graph's address */
+  writeHash();
 }
 export function readFile(f) {
   if (f) f.text().then((t) => readText(t, f.name));

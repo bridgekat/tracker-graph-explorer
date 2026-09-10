@@ -58,9 +58,10 @@ function bake() {
   };
 }
 
-/* One file is the point: the page has to open from file://, take a graph.json dropped
-   on it, and work with no server and nothing to install. Svelte and marked are
-   build-time dependencies; what ships is still index.html and nothing else. */
+/* One file is the point: the page is published as an index.html with nothing beside it
+   to fetch and nothing to install, and a copy of it is a copy of the whole thing. Svelte
+   and marked are build-time dependencies; what ships is still index.html and nothing
+   else. */
 export default defineConfig({
   root: "src",
   plugins: [tailwindcss(), svelte(), viteSingleFile(), bake()],

@@ -1,5 +1,5 @@
 /* Vite writes dist/index.html; the project's artifact is index.html at the root, which
-   is the file you open, drop a graph on, or publish beside one. */
+   is the file that gets served — on its own, or beside a graph for it to open. */
 import { copyFileSync, statSync } from "node:fs";
 
 copyFileSync("dist/index.html", "index.html");

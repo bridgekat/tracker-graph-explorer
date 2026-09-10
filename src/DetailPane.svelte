@@ -8,7 +8,7 @@
   import { declDocs, docsRoot, moduleDocs } from "./lib/site.js";
   import { app, select } from "./lib/state.svelte.js";
   import { STATE_LABEL, fmt, plural } from "./lib/util.js";
-  import { STATES } from "./lib/derive.js";
+  import { STATES, address } from "./lib/derive.js";
 
   const DEP_CAP = 60;
   const B = $derived(app.base);
@@ -18,10 +18,12 @@
   /* a group has a page in the API docs once its module is in the library, which is
      what one of its own declarations being anything but open says */
   const attached = $derived(!!group && group.decls.some((i) => B.decl[i].state !== "open"));
+  /* how the project writes down which declaration this is: its module, then its name */
+  const addr = $derived(decl ? address(B, app.sel) : "");
 
   let copied = $state(false);
-  function copy(id) {
-    navigator.clipboard?.writeText(id);
+  function copy(text) {
+    navigator.clipboard?.writeText(text);
     copied = true;
     setTimeout(() => (copied = false), 1200);
   }
@@ -53,7 +55,7 @@
       {:else if group.ready}<Badge color="yellow">ready to work on</Badge>{/if}
     </div>
     <h3 class="text-base font-semibold text-gray-950 dark:text-white">{group.label}</h3>
-    <div class="mt-1 {MONO} text-gray-500">module {group.name.split("/").join(".")}</div>
+    <div class="mt-1 {MONO} text-gray-500">module {group.name}</div>
 
     {#if docsRoot && attached}{@render docs(moduleDocs(group.name))}{/if}
 
@@ -108,19 +110,19 @@
       class="mt-1 {MONO} text-left text-gray-500 hover:underline"
       onclick={() => select({ t: 0, i: decl.g }, true)}
     >
-      module {B.tree[decl.g].name.split("/").join(".")}
+      module {B.tree[decl.g].name}
     </button>
 
     <div
       class="mt-2 flex items-start gap-2 rounded border border-gray-200 bg-gray-100 p-2
              dark:border-gray-800 dark:bg-gray-800"
     >
-      <code class="min-w-0 flex-1 {MONO} text-gray-700 dark:text-gray-300">{decl.id}</code>
+      <code class="min-w-0 flex-1 {MONO} text-gray-700 dark:text-gray-300">{addr}</code>
       <Button
         size="xs"
         color="alternative"
         class="shrink-0 !px-2 !py-1 !text-[10px]"
-        onclick={() => copy(decl.id)}>{copied ? "copied" : "copy"}</Button
+        onclick={() => copy(addr)}>{copied ? "copied" : "copy"}</Button
       >
     </div>
     {#if docsRoot && decl.state !== "open"}

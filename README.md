@@ -5,10 +5,11 @@ draw. This is the drawing: one HTML file, the whole window, that takes that JSON
 the plan graph it describes — from the shape of the library down to a single theorem and what it
 rests on.
 
-Open `index.html` and drop a `graph.json` on it, or use the button, or paste the JSON, or point the
-page at one with `index.html?graph=graph.json`. Nothing is uploaded; a dropped file never leaves the
-browser. A build can also bake a graph into the page, which makes it a page about that one graph
-rather than a page that takes any — see [what a build can bake in](#what-a-build-can-bake-in).
+Serve `index.html` — `npm run dev` does, and so does the Pages workflow — and drop a `graph.json` on
+it, or use the button, or paste the JSON, or point the page at one with `index.html?graph=graph.json`.
+Nothing is uploaded; a dropped file never leaves the browser. A build can also bake a graph into the
+page, which makes it a page about that one graph rather than a page that takes any — see [what a
+build can bake in](#what-a-build-can-bake-in).
 
 ```
 lake build                            # the tracker reads oleans, so build first
@@ -102,6 +103,42 @@ a double-click, on a box draws that box's cone. While you are in one the ground 
 card in that floating row says what the cone is of and carries the way back out to the whole graph,
 which comes back as you left it.
 
+**Which node you are on is in the address bar**, so the way to send someone what you are looking at
+is to copy the URL. The fragment is the node's address and nothing else:
+
+```
+index.html#Numlib/Krylov
+index.html#Numlib/Krylov/CR,Numlib.Krylov.CR.isMinResIterate
+```
+
+Opening one of those lands the page there in one layout, rather than drawing the areas and then
+going. What travels is one node and not the session: the rest of your expansion, the edge mode,
+whether you were in a neighbourhood and how wide your panes were all stay yours, and a link opens the
+tree down to its node and no further. A node is named by what the graph file calls it, so a link
+survives a re-export that renumbers everything, and an address the graph does not have is ignored — a
+stale link, or one made against another project's graph, still opens the page. The URL is replaced
+rather than pushed, so clicking around a drawing does not fill the back button with it.
+
+## How a node is addressed
+
+```
+Numlib/Krylov                                        a group
+Numlib/Krylov/CR,Numlib.Krylov.CR.isMinResIterate    a declaration
+```
+
+The path to the module, in the notation a module is written in, and then — for a declaration — a
+comma and the full name it is declared under. Both halves, because neither alone says where a thing
+is: a Lean name does not say which file it was written in, and a file does not say what is in it. The
+comma is what tells the two apart, and neither half can hold one; where an address has to go
+somewhere that cannot take a name as it stands, such as a URL, each part is escaped and the
+punctuation between them is left to read.
+
+A declaration is found by its own name, and the module in front of it is context rather than a second
+condition to satisfy: a declaration that has since moved to another file is still that declaration,
+and a link to it still arrives. This is the format the page puts in the address bar, and the one the
+detail pane hands you when you copy a declaration. `lib/derive.js` writes it down once — `address`
+and `refAt` — and everything that names a node goes through there.
+
 ## What it derives
 
 Only the three arrays are read: `groups` for the tree, `nodes` for `group`, `kind`, `state`, `desc`,
@@ -145,8 +182,8 @@ given are the coarsest thing about it, and colours them accordingly.
 
 ## The files
 
-`index.html` is the built page, and the only file you need to use it: open it, drop a `graph.json`
-on it, or publish it beside one. Everything is inlined, so it works from `file://` with nothing to
+`index.html` is the built page, and the only file you need to use it: serve it and drop a
+`graph.json` on it, or publish it beside one. Everything is inlined, so there is nothing else to
 fetch and nothing to install. It is built rather than committed: `npm run build` writes it at the
 root, and the Pages workflow publishes the same file.
 
@@ -155,9 +192,9 @@ components; the canvas is not. A scene at full depth is thousands of nodes and t
 edges, and diffing that against a virtual DOM every time the pointer moves would cost more than
 drawing it, so `lib/canvas.js` owns one `<svg>` and redraws it when the state says to.
 
-The layout is elkjs, which is most of the built file's size. There is no worker script to fetch
-from a page that opens from `file://`, so the worker's source is inlined as a string and started
-from a blob URL; where a worker cannot be made, the same source runs on the main thread.
+The layout is elkjs, which is most of the built file's size. What ships is one file, so there is no
+worker script beside it to fetch: the worker's source is inlined as a string and started from a blob
+URL; where a worker cannot be made, the same source runs on the main thread.
 
 A doc comment is Markdown, and the interesting half of one is usually inside a code span — a norm or
 an operator in `backticks` inside **bold**. marked does that parsing and `Prose.svelte` renders its
@@ -174,7 +211,7 @@ become markup. There is no `{@html}` anywhere, and a test asserts it.
 | `src/StateDot.svelte` | the coloured dot that says what state a thing is in |
 | `src/Canvas.svelte` | the viewport, the chrome floating on it and the tooltip |
 | `src/app.css`, `src/styles/` | the palette, the tokens and the whole of the look, the canvas included |
-| `src/lib/derive.js` | reading a graph, and the transitive reduction of a container's edges — no DOM in it |
+| `src/lib/derive.js` | reading a graph, how a node is addressed, and the transitive reduction of a container's edges — no DOM in it |
 | `src/lib/scene.js` | the nested scene: what boxes exist for an expansion state, and where |
 | `src/lib/elk.js` | the layout engine, ELK layered, in a worker |
 | `src/lib/canvas.js` | the SVG drawing, and the pointer and key handling on it |
