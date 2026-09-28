@@ -33,7 +33,7 @@
     setInset,
     showTree,
     togglePane,
-    toggleGroup,
+    toggleModule,
     zoomBy,
   } from "./lib/state.svelte.js";
   import { hasBaked } from "./lib/site.js";
@@ -65,7 +65,7 @@
       viewport,
       on: {
         select,
-        toggle: toggleGroup,
+        toggle: toggleModule,
         cone: setCone,
         tip: showTip,
         zoom: (k) => {
@@ -96,7 +96,7 @@
      the rest of the session, and a menu is what a question you ask occasionally looks
      like. Shift+F10 and the menu key reach it too: the browser turns both into the same
      event, and the only thing missing from them is where the pointer was. */
-  const MODULES = (t) => !t.isModule;
+  const MODULES = (t) => !t.isLeaf;
   const LEVELS = [
     ["Areas", (t) => t.level < 1],
     ["Sub-areas", (t) => t.level < 2],
@@ -309,11 +309,11 @@
         <p class={P}>
           Drop the JSON from <code class={CODE}>tracker graph</code> anywhere on this page, or
           open it, and this draws the project's dependency graph — starting at its areas, and
-          opening a group at a time down to the individual declaration. Nothing is uploaded;
+          opening a module at a time down to the individual declaration. Nothing is uploaded;
           the file never leaves the browser.
         </p>
         <p class="mt-2 text-[11px] text-gray-500">
-          <code class={CODE}>lake build &amp;&amp; lake exe tracker graph &gt; graph.json</code>,
+          <code class={CODE}>lake build &amp;&amp; lake exe tracker graph --all &gt; graph.json</code>,
           then open it here; or publish this page beside one and load it with
           <code class={CODE}>index.html?graph=graph.json</code>.
         </p>

@@ -8,7 +8,7 @@
 import { SvelteSet } from "svelte/reactivity";
 import * as TD from "./derive.js";
 import * as SC from "./scene.js";
-import { asGraph, inflateJson, isGzip } from "./format.js";
+import { inflateJson, isGzip } from "./format.js";
 import { measure } from "./canvas.js";
 
 export const app = $state({
@@ -82,7 +82,7 @@ async function settle(scene, opts) {
 }
 
 /* ---------- actions ---------- */
-/* open exactly the groups that pass: the top levels, every group, or everything */
+/* open exactly the modules that pass: the top levels, every module, or everything */
 function openTo(keep) {
   app.open.clear();
   app.base.tree.forEach((t) => { if (keep(t)) app.open.add(t.i); });
@@ -92,12 +92,12 @@ export function openWhere(keep) {
   app.coneSeed = null;
   rebuild();
 }
-export function toggleGroup(gi) {
+export function toggleModule(gi) {
   if (app.open.has(gi)) app.open.delete(gi); else app.open.add(gi);
   app.coneSeed = null;
   rebuild({ anchor: { t: 0, i: gi } });
 }
-/* every group above a node, so that opening them puts the node on the canvas */
+/* every module above a node, so that opening them puts the node on the canvas */
 function openDownTo(ref) {
   let g = ref.t === 0 ? app.base.tree[ref.i].parent : app.base.decl[ref.i].g;
   for (; g !== null; g = app.base.tree[g].parent) app.open.add(g);
@@ -215,10 +215,10 @@ addEventListener("resize", () => {
 });
 
 /* ---------- loading ----------
-   Every way in ends here: a parsed graph, in the contract shape or the compact one. */
+   Every way in ends here: a parsed graph. */
 export function readGraph(g, label) {
   let base;
-  try { base = TD.buildBase(asGraph(g)); }
+  try { base = TD.buildBase(g); }
   catch (e) { app.error = e.message || String(e); return; }
   app.error = "";
   app.base = base;

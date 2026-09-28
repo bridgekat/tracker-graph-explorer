@@ -1,7 +1,8 @@
 /* The scene: what is on the canvas for one expansion state, and where it goes.
 
-   A collapsed group is a box. An expanded group is a *container* — a rectangle
-   holding its children, laid out among themselves. So opening a box does not
+   A collapsed module is a box. An expanded module is a *container* — a rectangle
+   holding its children, the modules under it and its own declarations, laid out
+   among themselves. So opening a box does not
    rearrange the drawing: the box grows into the room its contents need, its
    siblings move aside, and everything it holds is inside the outline that was
    already there. Each container is laid out on its own, innermost first, which is
@@ -22,7 +23,7 @@ const TOP_GAP = { x: 68, y: 30 };
 const BUSY = 200;              /* children past which a container is laid out for speed */
 
 /* ---------- what is visible ----------
-   o.open is the set of open groups; o.cone, if given, is a set of declarations to
+   o.open is the set of open modules; o.cone, if given, is a set of declarations to
    draw on their own instead of the tree; o.measure sizes a box before layout. */
 function assemble(B, o) {
   const nodes = [], owner = new Int32Array(B.decl.length).fill(-1);
@@ -32,26 +33,27 @@ function assemble(B, o) {
     const d = B.decl[di], t = B.tree[d.g];
     const n = add({
       kind: "decl", di, parent, children: null, expanded: false,
-      label: d.label, name: d.id, group: t.name, sort: d.id,
-      count: 1, proved: d.state === "proved" ? 1 : 0, state: d.state,
-      declKind: d.kind,
+      label: d.label, name: d.id, module: t.name, sort: d.id,
+      count: 1, goal: 1, proved: d.state === "proved" ? 1 : 0, state: d.state,
+      declKind: d.kind, planned: d.planned,
     });
     owner[di] = n.id;
     return n;
   }
 
-  function groupNode(gi, parent) {
+  function moduleNode(gi, parent) {
     const t = B.tree[gi];
     if (!t.sub) return null;
     const n = add({
-      kind: "group", gi, parent, children: null, expanded: false,
+      kind: "module", gi, parent, children: null, expanded: false,
       label: t.label, name: t.name, short: t.short, sort: t.name,
-      count: t.sub, proved: t.byState.proved, state: t.state,
+      count: t.sub, goal: t.goal, proved: t.byState.proved, state: t.state,
       hue: t.hue, tone: t.tone,
     });
+    /* an open module holds the modules under it and its own declarations: a module
+       may be both a file and a directory of others */
     const kids = !o.open.has(gi) ? []
-      : t.kids.length ? t.kids.map((k) => groupNode(k, n)).filter(Boolean)
-        : t.decls.map((d) => declNode(d, n));
+      : [...t.kids.map((k) => moduleNode(k, n)).filter(Boolean), ...t.decls.map((d) => declNode(d, n))];
     if (kids.length) { n.expanded = true; n.children = kids; }
     else for (const d of t.subDecls) owner[d] = n.id;
     return n;
@@ -60,7 +62,7 @@ function assemble(B, o) {
   const root = add({ kind: "root", parent: null, children: [] });
   root.children = o.cone
     ? [...o.cone].sort((a, b) => (B.decl[a].id < B.decl[b].id ? -1 : 1)).map((d) => declNode(d, root))
-    : B.treeRoots.map((r) => groupNode(r, root)).filter(Boolean);
+    : B.treeRoots.map((r) => moduleNode(r, root)).filter(Boolean);
   nodes.forEach((n) => { n.depth = n.parent ? n.parent.depth + 1 : 0; });
 
   /* ---------- the edges between whatever is visible ----------
@@ -127,7 +129,7 @@ function toElk(S) {
   const options = (n) => {
     /* the areas at the top of the tree stand further apart than the rest; a
        neighbourhood's declarations, which also sit at the root, do not */
-    const gap = n.kind === "root" && n.children[0]?.kind === "group" ? TOP_GAP : GAP;
+    const gap = n.kind === "root" && n.children[0]?.kind === "module" ? TOP_GAP : GAP;
     const opt = {
       "elk.algorithm": "layered",
       "elk.direction": "RIGHT",

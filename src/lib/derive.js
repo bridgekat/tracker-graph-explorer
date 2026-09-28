@@ -1,9 +1,10 @@
 /* Derivation pipeline for a tracker `graph` JSON.
-   Input is the documented contract: { groups[], nodes[], edges[] }.
-   Everything the page draws is computed here, with no project-specific assumptions.
+   Input is the documented contract: { modules[], nodes[] }, whose entries name each
+   other by index. Everything the page draws is computed here, with no project-specific
+   assumptions.
 
    Three things live here:
-     buildBase   the group tree and the graph between declarations, read once
+     buildBase   the module tree and the graph between declarations, read once
      reduce      the transitive reduction of one container's edges, with the
                  cycles among them broken first
      address     how the project writes down which node it means, and reads it back
@@ -34,54 +35,46 @@ function rollState(by) {
 
 function validate(g) {
   if (!g || typeof g !== "object") throw new Error("Not a JSON object.");
-  ["nodes", "groups", "edges"].forEach((k) => {
-    if (!Array.isArray(g[k])) throw new Error('Missing the "' + k + '" array. This does not look like `tracker graph` output.');
+  if (Array.isArray(g.groups) || Array.isArray(g.edges))
+    throw new Error("This is the graph of an older tracker, with groups and edges. Export it "
+      + "again with the current one: `lake exe tracker graph`.");
+  ["modules", "nodes"].forEach((k) => {
+    if (!Array.isArray(g[k])) throw new Error('Missing the "' + k + '" table. This does not look like `tracker graph` output.');
   });
   if (!g.nodes.length) throw new Error("The graph has no nodes.");
-  const n = g.nodes[0];
-  if (typeof n.id !== "string" || typeof n.group !== "string")
-    throw new Error('Nodes need "id" and "group" strings.');
-  if (g.edges.length) {
-    const e = g.edges[0];
-    if (typeof e.from !== "string" || typeof e.to !== "string")
-      throw new Error('Edges need "from" and "to" strings.');
-  }
+  const n = g.nodes[0], m = g.modules[0];
+  if (typeof n.id !== "string" || typeof n.module !== "number")
+    throw new Error('Nodes need an "id" string and a "module" index.');
+  if (!m || typeof m.name !== "string") throw new Error('Modules need a "name" string.');
   return true;
 }
 
 /* ================================================================
-   base: the group tree, the declaration graph, the module rollup
+   base: the module tree, the declaration graph, the rollup
    ================================================================ */
 function buildBase(g) {
   validate(g);
 
-  /* ---- the tree of groups ------------------------------------- */
-  const gidx = {}, T = [];
-  function addGroup(rec) {
-    rec.i = T.length;
-    gidx[rec.name] = rec.i;
-    T.push(rec);
-    return rec.i;
-  }
-  function blank(name, parent, desc, done, ready) {
-    return {
-      i: -1, name, label: lastSeg(name, "/"), short: name,
-      parentName: parent || null, parent: null, kids: [], level: 0,
-      decls: [], subDecls: [], byState: zeroStates(), state: "open",
-      desc: desc || "", done: !!done, ready: !!ready, topic: -1, hue: 0, tone: 0
-    };
-  }
-  g.groups.forEach((x) => {
-    if (gidx[x.name] === undefined) addGroup(blank(x.name, x.parent, x.desc, x.done, x.ready));
+  /* ---- the module tree ---------------------------------------- */
+  const blank = (i, x) => ({
+    i, name: x.name, label: lastSeg(x.name, "."), short: x.name,
+    parent: null, kids: [], level: 0,
+    decls: [], subDecls: [], byState: zeroStates(), state: "open",
+    desc: x.desc || "", exists: !!x.exists, plan: !!x.plan, done: !!x.done, ready: !!x.ready,
+    topic: -1, hue: 0, tone: 0
   });
-  /* a node may name a group the plan does not list; it still needs a home */
-  g.nodes.forEach((n) => {
-    if (gidx[n.group] === undefined) addGroup(blank(n.group));
+  const T = g.modules.map((x, i) => blank(i, x));
+  g.modules.forEach((x, i) => {
+    const p = x.parent;
+    T[i].parent = (Number.isInteger(p) && T[p] && p !== i) ? p : null;
   });
-  T.forEach((t) => {
-    const p = t.parentName != null ? gidx[t.parentName] : undefined;
-    t.parent = (p === undefined || p === t.i) ? null : p;
-  });
+  /* a node may name a module the file does not list; it still needs a home */
+  let orphans = -1;
+  const home = (m) => {
+    if (Number.isInteger(m) && T[m]) return m;
+    if (orphans < 0) { orphans = T.length; T.push(blank(orphans, { name: "(no module)" })); }
+    return orphans;
+  };
   /* a malformed plan could name a parent cycle; cut it rather than hang */
   T.forEach((t) => {
     const seen = new Set();
@@ -95,7 +88,7 @@ function buildBase(g) {
   const treeRoots = [];
   T.forEach((t) => { if (t.parent === null) treeRoots.push(t.i); });
 
-  /* the level of a group is its depth below its root */
+  /* the level of a module is its depth below its root */
   const stack = treeRoots.slice();
   treeRoots.forEach((r) => { T[r].level = 0; });
   while (stack.length) {
@@ -104,7 +97,7 @@ function buildBase(g) {
   }
 
   T.forEach((t) => {
-    t.isModule = t.kids.length === 0;
+    t.isLeaf = t.kids.length === 0;
     t.kids.sort((a, b) => (T[a].name < T[b].name ? -1 : 1));
   });
   /* the topic is the ancestor just below the root: the level at which colour is legible */
@@ -114,43 +107,55 @@ function buildBase(g) {
     t.topic = cur;
   });
 
-  /* with one root, its name is noise in front of every group's */
-  const rootPrefix = treeRoots.length === 1 ? T[treeRoots[0]].name + "/" : null;
+  /* with one root, its name is noise in front of every module's */
+  const rootPrefix = treeRoots.length === 1 ? T[treeRoots[0]].name + "." : null;
   T.forEach((t) => {
     t.short = rootPrefix && t.name.startsWith(rootPrefix) ? t.name.slice(rootPrefix.length) : t.name;
   });
 
   /* ---- the declarations --------------------------------------- */
-  const D = [], didx = {};
-  g.nodes.forEach((n) => {
-    const d = {
-      i: D.length, id: n.id, label: lastSeg(n.id, "."), g: gidx[n.group],
-      kind: n.kind || "other", state: n.wrong ? "wrong" : normState(n.state),
-      desc: n.desc || "", source: n.source || null,
-      wrong: n.wrong || null, deprecated: n.deprecated || null
-    };
-    didx[n.id] = d.i;
-    D.push(d);
-  });
-  /* attach each declaration to its group and to every ancestor of it */
+  const D = g.nodes.map((n, i) => ({
+    i, id: n.id, label: lastSeg(n.id, "."), g: home(n.module), planned: !!n.planned,
+    kind: n.kind || "other", state: n.wrong ? "wrong" : normState(n.state),
+    desc: n.desc || "", source: n.source || null,
+    wrong: n.wrong || null, deprecated: n.deprecated || null
+  }));
+  /* Attach each declaration to its module and to every module above it. Progress is
+     counted over the planned declarations, as `tracker status` counts it: they are what
+     the plan asks for, and the rest are helpers, nearly always proved. A module with no
+     planned declaration in or under it is measured by all of its declarations instead.
+     `sub` counts every declaration either way: it is how big a module is. */
+  const all = T.map(() => zeroStates());
   D.forEach((d) => {
     T[d.g].decls.push(d.i);
     for (let cur = d.g; cur !== null; cur = T[cur].parent) {
       T[cur].subDecls.push(d.i);
-      T[cur].byState[d.state]++;
+      all[cur][d.state]++;
+      if (d.planned) T[cur].byState[d.state]++;
     }
   });
-  T.forEach((t) => { t.sub = t.subDecls.length; t.state = rollState(t.byState); });
+  T.forEach((t) => {
+    t.sub = t.subDecls.length;
+    if (!STATES.some((s) => t.byState[s])) t.byState = all[t.i];
+    t.goal = STATES.reduce((a, s) => a + t.byState[s], 0);
+    t.measured = t.byState === all[t.i] ? "all" : "planned";
+    t.state = rollState(t.byState);
+  });
 
-  /* ---- the declaration graph ---------------------------------- */
+  /* ---- the declaration graph ----------------------------------
+     What a node rests on is in its `deps` and its `suggested`, as indexes into
+     `nodes`; both are drawn, since an open declaration has only the second. */
   const DE = [], dout = [], din = [];
   for (let q = 0; q < D.length; q++) { dout.push([]); din.push([]); }
-  g.edges.forEach((e) => {
-    const u = didx[e.from], v = didx[e.to];
-    /* an edge naming something the plan does not list has no end to draw from */
-    if (u === undefined || v === undefined || u === v) return;
-    DE.push([u, v]);
-    dout[u].push(v); din[v].push(u);
+  g.nodes.forEach((n, u) => {
+    const seen = new Set();
+    for (const v of [...(n.deps || []), ...(n.suggested || [])]) {
+      /* an index the file does not have has no end to draw to */
+      if (!Number.isInteger(v) || !D[v] || v === u || seen.has(v)) continue;
+      seen.add(v);
+      DE.push([u, v]);
+      dout[u].push(v); din[v].push(u);
+    }
   });
 
   /* ---- topics: the colour dimension of the explorer ------------
@@ -175,7 +180,10 @@ function buildBase(g) {
 
   return {
     tree: T, treeRoots, decl: D, dedges: DE, dout, din,
-    meta: { nodes: D.length, modules: T.filter((t) => t.decls.length).length }
+    meta: {
+      nodes: D.length, modules: T.filter((t) => t.decls.length).length,
+      planned: D.filter((d) => d.planned).length
+    }
   };
 }
 /* ================================================================
@@ -272,11 +280,11 @@ function reduce(R, pairs) {
 /* ================================================================
    address — how this project writes down which node it means.
 
-     Numlib/Krylov                                      a group
-     Numlib/Krylov/CR,Numlib.Krylov.CR.isMinResIterate  a declaration
+     Numlib.Krylov                                      a module
+     Numlib.Krylov.CR,Numlib.Krylov.CR.isMinResIterate  a declaration
 
-   The path to the module, in the notation a module is written in, and then — for a
-   declaration — a comma and the full name it is declared under. Both halves, because
+   The module name, as `import` writes it, and then — for a declaration — a comma and
+   the id it is declared under. Both halves, because
    neither alone says where a thing is: a Lean name does not say which file it was
    written in, and a file does not say what is in it. So an address is a module and, if
    the thing addressed is inside it, the name of the thing inside it. The comma is what
@@ -285,7 +293,7 @@ function reduce(R, pairs) {
    A declaration is found by its own name; the module in front of it is not a second
    condition to satisfy but the context that makes the address legible — a declaration
    that has since moved to another file is still that declaration, and a link to it
-   should still arrive. A group is found by its path.
+   should still arrive. A module is found by its name.
 
    This is the one place the format is written down. Everything that has to name a node
    — the address bar above all — reads and writes it through here. Somewhere that cannot
@@ -295,16 +303,16 @@ function reduce(R, pairs) {
    ================================================================ */
 function address(base, ref, esc = (s) => s) {
   const decl = ref.t === 1 ? base.decl[ref.i] : null;
-  const group = base.tree[decl ? decl.g : ref.i];
-  const path = group.name.split("/").map(esc).join("/");
-  return decl ? `${path},${esc(decl.id)}` : path;
+  const module = base.tree[decl ? decl.g : ref.i];
+  const name = module.name.split(".").map(esc).join(".");
+  return decl ? `${name},${esc(decl.id)}` : name;
 }
 /* the node an address names, or null if this graph does not have it */
 function refAt(base, addr, unesc = (s) => s) {
   const c = addr.indexOf(",");
   if (c < 0) {
-    const path = addr.split("/").map(unesc).join("/");
-    const g = base.tree.findIndex((t) => t.name === path);
+    const name = addr.split(".").map(unesc).join(".");
+    const g = base.tree.findIndex((t) => t.name === name);
     return g < 0 ? null : { t: 0, i: g };
   }
   const d = base.decl.findIndex((x) => x.id === unesc(addr.slice(c + 1)));

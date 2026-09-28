@@ -5,7 +5,6 @@ import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
-import { compact } from "./src/lib/format.js";
 
 /* What a build may bake into the page, read from the environment, so that a job which
    has just exported a graph can publish a page that opens on that graph and links every
@@ -38,9 +37,9 @@ function bake() {
   const MB = (n) => (n / 1048576).toFixed(2);
   let graph = "";
   if (path) {
-    const json = Buffer.from(JSON.stringify(compact(JSON.parse(readFileSync(path, "utf8")))), "utf8");
+    const json = Buffer.from(JSON.stringify(JSON.parse(readFileSync(path, "utf8"))), "utf8");
     graph = gzipSync(json, { level: 9 }).toString("base64");
-    console.log(`${path} — ${MB(statSync(path).size)}MB read, ${MB(json.length)}MB compact, `
+    console.log(`${path} — ${MB(statSync(path).size)}MB read, ${MB(json.length)}MB minified, `
       + `${MB(graph.length)}MB baked in`);
   }
   if (docs) console.log(`API docs — ${docs}`);

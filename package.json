@@ -2,7 +2,7 @@
   "name": "tracker-viz",
   "version": "1.0.0",
   "private": true,
-  "description": "The drawing for `tracker graph`: one HTML file that walks a Lean formalization plan from its areas down to a single theorem.",
+  "description": "The drawing for `tracker graph`: one HTML file that walks the dependency graph of a Lean project from its areas down to a single theorem.",
   "license": "MIT",
   "type": "module",
   "scripts": {

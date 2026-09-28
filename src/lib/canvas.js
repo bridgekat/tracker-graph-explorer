@@ -11,7 +11,7 @@ import {
   hueFill, hueLine, hueBar, hueWash,
 } from "./util.js";
 
-const H_DECL = 23, H_GROUP = 27, RX = 4, RX_C = 5;
+const H_DECL = 23, H_MODULE = 27, RX = 4, RX_C = 5;
 const MAX_W = 230, PAD_W = 20, NUM_W = 30, TOG_W = 17;
 const MARGIN = 44;
 const K_MIN = 0.03, K_MAX = 4;
@@ -20,33 +20,36 @@ const ANIM_MAX = 4000;              /* boxes, old and new together, past which a
 const r2 = (v) => Math.round(v * 10) / 10;
 const clampK = (k) => Math.max(K_MIN, Math.min(K_MAX, k));
 const shortNum = (v) => (v > 9999 ? Math.round(v / 1000) + "k" : fmt(v));
-const refOf = (n) => (n.kind === "group" ? { t: 0, i: n.gi } : { t: 1, i: n.di });
+const refOf = (n) => (n.kind === "module" ? { t: 0, i: n.gi } : { t: 1, i: n.di });
 
 /* ---------- measuring a box ----------
    scene.js asks for this before it lays anything out, so the two agree on size. */
 let fonts = null;
 export function measure(n) {
   if (n.kind === "root") return;
-  /* A group's title is a group's title: an open container writes it in the same hand
-     its box wrote it in, so opening one changes where the title sits and nothing else. */
+  /* A module's title is a module's title: an open container writes it in the same hand
+     its box wrote it in, so opening one changes where the title sits and nothing else.
+     A planned declaration is one of the key nodes of the graph, and writes its name in
+     bold; graph.css says the same, and this is what the box is sized for. */
   fonts ??= {
     decl: `400 11px ${css("--mono")}`,
-    group: `600 11px ${css("--sans")}`,
+    planned: `600 11px ${css("--mono")}`,
+    module: `600 11px ${css("--sans")}`,
   };
-  const isGroup = n.kind === "group";
+  const isModule = n.kind === "module";
   if (n.expanded) {
     /* an open container takes its size from its contents, but never less than the
        room its own title needs */
-    n.headW = Math.round(textWidth(n.label, fonts.group)) + NUM_W + TOG_W + 26;
+    n.headW = Math.round(textWidth(n.label, fonts.module)) + NUM_W + TOG_W + 26;
     return;
   }
-  const font = isGroup ? fonts.group : fonts.decl;
+  const font = isModule ? fonts.module : n.planned ? fonts.planned : fonts.decl;
   /* every box carries its own control, so every box keeps the room for one */
-  const chrome = PAD_W + TOG_W + (isGroup ? NUM_W : 0);
+  const chrome = PAD_W + TOG_W + (isModule ? NUM_W : 0);
   /* ceil, so the room left for the label is never a fraction of a pixel short of
      what the label actually measured */
   n.w = Math.max(58, Math.min(MAX_W, Math.ceil(textWidth(n.label, font)) + chrome));
-  n.h = isGroup ? H_GROUP : H_DECL;
+  n.h = isModule ? H_MODULE : H_DECL;
   n.text = ellipsis(n.label, font, n.w - chrome);
 }
 
@@ -55,7 +58,7 @@ export function createCanvas({ svg, viewport, on }) {
   let S = null;                       /* the scene being drawn */
   let sceneG = null, edgeEls = [];    /* what draw() made of it */
   let elOf = new Map();               /* a node's id -> its <g> */
-  /* the camera: one group carrying the pan and zoom, holding the scene — and,
+  /* the camera: one <g> carrying the pan and zoom, holding the scene — and,
      while one scene is becoming the next, both */
   const camG = el("g", { id: "exScene" });
   svg.appendChild(camG);
@@ -67,12 +70,12 @@ export function createCanvas({ svg, viewport, on }) {
 
      A declaration is coloured by what it is: a definition and a theorem are different
      kinds of thing, and which of the two a box holds is the first thing worth knowing
-     about it. A group holds both, so a kind is not a question it can answer; it is
+     about it. A module holds both, so a kind is not a question it can answer; it is
      coloured by the area it belongs to instead — the root of the tree picks the family
      and the area within it picks the shade, so a backbone and its surfaces read apart.
 
      Whichever hue a box gets, it gets it in two strengths: the bar is the hue and the
-     ground is the hue let down to a tint. A group's bar is how much of what is inside
+     ground is the hue let down to a tint. A module's bar is how much of what is inside
      it is proved. A declaration is proved or it is not, so its bar is all or nothing,
      and the two strengths are the whole of what it can say: the kind's colour where
      the work is done, a pale version of it where it is still open.
@@ -83,7 +86,7 @@ export function createCanvas({ svg, viewport, on }) {
      exception carried through the hue arithmetic here. */
   const hueOf = (n) => (n.kind === "decl" ? kindHue(n.declKind) : n.hue);
   const toneOf = (n) => (n.kind === "decl" ? 0 : n.tone);
-  /* A group's bar is a share of it, drawn over its ground as a rect of its own. A
+  /* A module's bar is a share of it, drawn over its ground as a rect of its own. A
      declaration is proved or it is not, so its bar is the whole box or none of it: it
      needs no rect, only the one colour or the other. */
   const fillOf = (n) => (n.kind === "decl" && n.proved ? barOf(n) : hueFill(hueOf(n), toneOf(n)));
@@ -92,7 +95,7 @@ export function createCanvas({ svg, viewport, on }) {
   const washOf = (n) => hueWash(n.hue, n.tone);
 
   /* ================= drawing ================= */
-  /* draws the scene into a new group; whoever had the old one takes it away.
+  /* draws the scene into a new <g>; whoever had the old one takes it away.
      Two scenes can be in the document at once, so ids carry the scene's serial. */
   let serial = 0;
   const clipId = (n) => `exclip${serial}-${n.id}`;
@@ -131,7 +134,8 @@ export function createCanvas({ svg, viewport, on }) {
       g = el("g", { class: "ex-root" });
     } else {
       g = el("g", {
-        class: "ex-node " + (n.kind === "group" ? "grp" : "decl") + (n.expanded ? " open" : "")
+        class: "ex-node " + (n.kind === "module" ? "mod" : "decl") + (n.expanded ? " open" : "")
+          + (n.kind === "decl" && n.planned ? " planned" : "")
           + (n.kind === "decl" && FLAGGED[n.state] ? " flag-" + n.state : ""),
         transform: `translate(${r2(n.x)},${r2(n.y)})`,
         tabindex: "-1", role: "button", "aria-label": aria(n),
@@ -156,16 +160,16 @@ export function createCanvas({ svg, viewport, on }) {
      depends on the box's size is set in geometry(), so a box can be resized in place
      while it animates from what it was to what it is. */
   function drawBox(g, n) {
-    const isGroup = n.kind === "group", P = g.__parts = {};
-    if (isGroup) g.appendChild(clipFor(n, P, RX));
+    const isModule = n.kind === "module", P = g.__parts = {};
+    if (isModule) g.appendChild(clipFor(n, P, RX));
     g.appendChild(P.fill = el("rect", { class: "ex-fill", x: 0, y: 0, rx: RX, fill: fillOf(n) }));
-    if (isGroup) g.appendChild(P.prog = progress(n));
+    if (isModule) g.appendChild(P.prog = progress(n));
     /* the outline last, so the bar stops at it rather than runs over it */
     g.appendChild(P.box = el("rect", { class: "ex-box", x: 0, y: 0, rx: RX, fill: "none", stroke: lineOf(n) }));
     g.appendChild(P.lab = el("text", {
-      class: "ex-lab", "text-anchor": isGroup ? "start" : "middle",
+      class: "ex-lab", "text-anchor": isModule ? "start" : "middle",
     }, n.text));
-    if (isGroup) g.appendChild(P.num = el("text", { class: "ex-num", "text-anchor": "end" }, shortNum(n.count)));
+    if (isModule) g.appendChild(P.num = el("text", { class: "ex-num", "text-anchor": "end" }, shortNum(n.count)));
     g.appendChild(P.tog = control(n, P));
     geometry(g, n, n.w, n.h);
   }
@@ -180,7 +184,7 @@ export function createCanvas({ svg, viewport, on }) {
     }));
     g.appendChild(P.box = el("rect", { class: "ex-cbg", x: 0, y: 0, rx: RX_C, fill: "none", stroke: lineOf(n) }));
     g.appendChild(el("text", { class: "ex-chead", x: TOG_W + 5, y: SC.HEAD - 6.5 },
-      ellipsis(n.label, fonts.group, Math.max(20, n.w - NUM_W - TOG_W - 18))));
+      ellipsis(n.label, fonts.module, Math.max(20, n.w - NUM_W - TOG_W - 18))));
     g.appendChild(P.num = el("text", { class: "ex-cnum", y: SC.HEAD - 6.5, "text-anchor": "end" }, shortNum(n.count)));
     g.appendChild(P.tog = control(n, P));
     geometry(g, n, n.w, n.h);
@@ -197,12 +201,12 @@ export function createCanvas({ svg, viewport, on }) {
       if (r) { r.setAttribute("width", r2(w)); r.setAttribute("height", r2(h)); }
     }
     if (P.prog) {
-      P.prog.setAttribute("width", r2(Math.max(0, w * (n.proved / Math.max(1, n.count)))));
+      P.prog.setAttribute("width", r2(Math.max(0, w * (n.proved / Math.max(1, n.goal)))));
       P.prog.setAttribute("height", r2(strip));
     }
     if (P.rule) P.rule.setAttribute("x2", r2(w));
     if (P.lab) {
-      /* a group writes its title from the left, after its control; a declaration writes
+      /* a module writes its title from the left, after its control; a declaration writes
          its own in the middle of whatever room the control leaves */
       P.lab.setAttribute("x", r2(n.kind === "decl" ? TOG_W + (w - TOG_W) / 2 : TOG_W + 5));
       P.lab.setAttribute("y", r2(strip / 2 + 3.6));
@@ -232,12 +236,12 @@ export function createCanvas({ svg, viewport, on }) {
 
   /* ---------- the control every box carries ----------
      One control, in one place — the left of the box, before its title — doing the one
-     thing that box can be opened into: a group into the boxes it holds, a declaration
+     thing that box can be opened into: a module into the boxes it holds, a declaration
      into the neighbourhood it sits in. It is at the left because that is the edge that
-     does not move: opening a group makes it much wider, and a control at the right
+     does not move: opening a module makes it much wider, and a control at the right
      would travel the whole of that width while you are still looking at it.
 
-     A group's glyph is the ＋ or − of a thing that opens and shuts. A declaration's is
+     A module's glyph is the ＋ or − of a thing that opens and shuts. A declaration's is
      the shape of what opening it draws: the node itself, and the two ways out of it.
      The drawing runs left to right, so what it rests on runs off to its left and what
      rests on it off to its right, and the glyph points both ways at once. */
@@ -261,11 +265,12 @@ export function createCanvas({ svg, viewport, on }) {
   }
 
   function aria(n) {
-    if (n.kind === "group") {
-      return `${n.short}, ${plural(n.count, "result")}, ${STATE_LABEL[n.state]}`
+    if (n.kind === "module") {
+      return `${n.short}, ${plural(n.count, "declaration")}, ${STATE_LABEL[n.state]}`
         + (n.expanded ? ", open" : ". Enter to open it.");
     }
-    return `${n.name}, ${n.declKind}, ${STATE_LABEL[n.state]}. Enter draws its neighbourhood.`;
+    return `${n.name}, ${n.planned ? "planned " : ""}${n.declKind}, ${STATE_LABEL[n.state]}. `
+      + "Enter draws its neighbourhood.";
   }
 
   /* ---------- edges ---------- */
@@ -359,7 +364,7 @@ export function createCanvas({ svg, viewport, on }) {
     return seen;
   }
   /* which declarations each box stands for: a declaration's box stands for it alone, a
-     shut group's box for every declaration under it, and an open container for none of
+     shut module's box for every declaration under it, and an open container for none of
      its own, since its children are standing for all of them */
   function owned(id) {
     if (!ownedBy) {
@@ -399,7 +404,7 @@ export function createCanvas({ svg, viewport, on }) {
   function nodeFor(ref) {
     if (!ref || !S) return null;
     for (const n of S.nodes) {
-      if (ref.t === 0 && n.kind === "group" && n.gi === ref.i) return n;
+      if (ref.t === 0 && n.kind === "module" && n.gi === ref.i) return n;
       if (ref.t === 1 && n.kind === "decl" && n.di === ref.i) return n;
     }
     /* it collapsed into something: land on whatever stands for it */
@@ -467,7 +472,7 @@ export function createCanvas({ svg, viewport, on }) {
 
   /* ================= one scene becoming the next =================
 
-     A box stands for a group or a declaration, and both are there before and after
+     A box stands for a module or a declaration, and both are there before and after
      a change, so every box in the new scene knows where its counterpart was. The
      new scene is drawn where it belongs, then each box starts from that old place
      and size and tweens home: this is a FLIP, and a box that ends up far away
@@ -479,7 +484,7 @@ export function createCanvas({ svg, viewport, on }) {
      is there before and after is tweened from its old route to its new one, both
      resampled to the same number of points along their length; the rest fade
      out or in. The camera goes along, so what was held still stays held. */
-  const keyOf = (n) => (n.kind === "group" ? "g" + n.gi : "d" + n.di);
+  const keyOf = (n) => (n.kind === "module" ? "g" + n.gi : "d" + n.di);
   const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   const lerp = (a, b, t) => a + (b - a) * t;
   let anim = null;
@@ -694,7 +699,7 @@ export function createCanvas({ svg, viewport, on }) {
     applyTransform();
   }
   const screenOf = (n) => [n.ax * Z.k + Z.x, n.ay * Z.k + Z.y];
-  /* Opening a group makes it much bigger: hold its corner where it was on screen, zoom
+  /* Opening a module makes it much bigger: hold its corner where it was on screen, zoom
      out only as far as it takes to see all of what appeared, and then slide it back
      inside the viewport. */
   function holdAt(n, at) {
@@ -713,9 +718,9 @@ export function createCanvas({ svg, viewport, on }) {
   }
 
   /* ================= interaction ================= */
-  /* Opening a box is what its own control does, and what Enter does: a group opens into
+  /* Opening a box is what its own control does, and what Enter does: a module opens into
      the boxes it holds, a declaration into the neighbourhood it sits in. */
-  const activate = (n) => (n.kind === "group" ? on.toggle(n.gi) : on.cone(refOf(n)));
+  const activate = (n) => (n.kind === "module" ? on.toggle(n.gi) : on.cone(refOf(n)));
   function wireNode(g, n) {
     /* enter and leave do not bubble, so the innermost box under the pointer wins */
     g.addEventListener("pointerenter", (e) => { hover = n; paintHover(); tipFor(e, n); });
@@ -762,17 +767,21 @@ export function createCanvas({ svg, viewport, on }) {
   function tipFor(e, n) {
     if (!onTitle(e, n)) { on.tip(null); return; }
     const c = coneOf(n), rows = [];
-    if (n.kind === "group") {
-      rows.push({ text: plural(n.count, "result") + (n.expanded ? " · open" : "") });
-      rows.push({ state: n.state, text: `${STATE_LABEL[n.state]} · ${fmt(n.proved)} of ${fmt(n.count)} proved` });
+    if (n.kind === "module") {
+      rows.push({ text: plural(n.count, "declaration") + (n.expanded ? " · open" : "") });
+      rows.push({
+        state: n.state,
+        text: `${STATE_LABEL[n.state]} · ${fmt(n.proved)} of ${fmt(n.goal)}`
+          + `${B.tree[n.gi].measured === "planned" ? " planned" : ""} proved`,
+      });
       rows.push({ text: n.expanded ? "− closes it" : "＋ opens it" });
     } else {
-      rows.push({ text: `${n.declKind} in ${n.group}` });
+      rows.push({ text: `${n.planned ? "planned" : "unplanned"} ${n.declKind} in ${n.module}` });
       rows.push({ state: n.state, text: STATE_LABEL[n.state] });
       rows.push({ text: "↵ draws its neighbourhood" });
     }
     rows.push({ text: `rests on ${c.below.size} · ${c.above.size} rest on it` });
-    on.tip({ title: n.kind === "group" ? n.short : n.name, rows, x: e.clientX, y: e.clientY });
+    on.tip({ title: n.kind === "module" ? n.short : n.name, rows, x: e.clientX, y: e.clientY });
   }
 
   let down = null, swallowClick = false;

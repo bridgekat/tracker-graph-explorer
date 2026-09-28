@@ -125,8 +125,14 @@
   font: 400 11px var(--mono)
 }
 
-/* a group's title is a group's title, open or shut */
-.ex-node.grp>.ex-lab,
+/* a planned declaration is a key node of the graph, and writes its name in bold;
+   canvas.js sizes its box for the same font */
+.ex-node.decl.planned>.ex-lab {
+  font-weight: 600
+}
+
+/* a module's title is a module's title, open or shut */
+.ex-node.mod>.ex-lab,
 .ex-chead {
   font: 600 11px var(--sans)
 }

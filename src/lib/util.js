@@ -44,7 +44,7 @@ function isDark() {
 }
 /* What a declaration is decides its hue: a definition and a theorem are different kinds
    of thing, and which of the two a box holds is the first thing worth knowing about it.
-   A group holds both, so a kind is not a question it can answer, and it takes the hue of
+   A module holds both, so a kind is not a question it can answer, and it takes the hue of
    its area instead — which derive.js works out per project, and this cannot. */
 export const kindHue = (declKind) => (declKind === "definition" ? 28 : 210);
 

@@ -2,8 +2,8 @@
 
 `tracker graph` is the contract for anything that wants a picture, and the tracker itself does not
 draw. This is the drawing: one HTML file, the whole window, that takes that JSON and lets you walk
-the plan graph it describes — from the shape of the library down to a single theorem and what it
-rests on.
+the dependency graph it describes — from the shape of the library down to a single theorem and
+what it rests on.
 
 Serve `index.html` — `npm run dev` does, and so does the Pages workflow — and drop a `graph.json` on
 it, or use the button, or paste the JSON, or point the page at one with `index.html?graph=graph.json`.
@@ -12,15 +12,18 @@ page, which makes it a page about that one graph rather than a page that takes a
 build can bake in](#what-a-build-can-bake-in).
 
 ```
-lake build                            # the tracker reads oleans, so build first
-lake exe tracker graph > graph.json   # the whole project
-lake exe tracker graph --under Convex/Duality > graph.json   # one group and its descendants
+lake build                                  # the tracker reads oleans, so build first
+lake exe tracker graph --all > graph.json   # every declaration of the project
+lake exe tracker graph > graph.json         # the planned declarations only
+lake exe tracker graph --all --under Numlib.Analysis.Convex > graph.json   # one module and those under it
 ```
 
 ## What it draws
 
-**A node in the plan is a declaration; a node in the picture is whatever you have opened it to.**
-The page starts with one box per area, and every box is a door.
+**A node in the graph is a declaration; a node in the picture is whatever you have opened it to.**
+The page starts with one box per area, and every box is a door. The planned declarations — the key
+nodes the plan names — write their names in bold, wherever they appear; the rest are the helpers
+that hold them up.
 
 **A box does not become a new drawing when you open it — it becomes a container.** Its children are
 laid out inside the outline that was already there, its siblings move aside to make room, and the
@@ -28,19 +31,23 @@ camera holds its corner where it was, so you can see what was inside the thing y
 And it moves: every box slides from where it was to where it now is, an opening container unfolds
 its contents from the box it was, a closing one folds them back into the box it becomes, and an
 edge that is there before and after bends from its old route to its new one. A box stands for a
-group or a declaration, an edge for a pair of them, and that is what survives the change and knows
+module or a declaration, an edge for a pair of them, and that is what survives the change and knows
 where it came from. The motion is off when the system asks for reduced motion, and skipped when a
 view is too big for it to help.
 That is the whole reason the layout is nested: each container is laid out on its own rather than
-the canvas as a whole, so opening a group cannot reorder anything outside it. Nesting goes as deep
-as the plan does — a library holding an area holding a module holding its theorems.
+the canvas as a whole, so opening a module cannot reorder anything outside it. Nesting goes as deep
+as the module tree does — a library holding an area holding a module holding its theorems — and an
+open module holds both the modules under it and its own declarations.
 
 **Left to right.** A box sits after everything it rests on, so an edge always runs back towards the
 left, and depth reads along the page. An edge that has to run the other way is one the layering
 could not honour, and it is drawn dashed.
 
 **How far a box is done is how far it is filled.** Every box has one hue in two strengths: the
-proved share of it is drawn in the hue itself, and the rest is the same hue let down to a tint. The
+proved share of it is drawn in the hue itself, and the rest is the same hue let down to a tint.
+The share is of the planned declarations in it, as `tracker status` counts it — they are what the
+plan asks for, and the helpers are nearly always proved — and of all its declarations for a module
+none of whose declarations are planned. The number on a box is how many declarations it holds. The
 bar is clipped by the box, so it runs edge to edge and ends in the box's own corners; on an open
 container it fills the title strip instead. Colour says what a box is and strength says how far it
 has got, so the two never have to share a channel.
@@ -48,7 +55,7 @@ has got, so the two never have to share a channel.
 **What a box is depends on which kind of box it is.** A declaration is coloured by what it is — a
 definition and a theorem are different kinds of thing, and which of the two a box holds is the first
 thing worth knowing about it. A declaration is proved or it is not, so its bar is all or nothing:
-the kind's colour where the work is done, a pale version of it where it is still open. A group holds
+the kind's colour where the work is done, a pale version of it where it is still open. A module holds
 both kinds, so a kind is not a question it can answer; it is coloured by its area instead, which is
 two questions at once, since the root of the tree picks the hue family — so a backbone and its
 surfaces read apart at a glance — and the area within it picks the shade.
@@ -71,7 +78,7 @@ its emphasis every time the pointer crosses it is hard to read.
 
 **Every box carries one control, and clicking the box itself never does anything but light it.** The
 control sits at the box's left, before its title, and does the one thing that box can be opened
-into: a group opens into the boxes it holds, a declaration into the neighbourhood it sits in. Enter
+into: a module opens into the boxes it holds, a declaration into the neighbourhood it sits in. Enter
 does the same from the keyboard. It is at the left because that is the edge that opening does not
 move — a box grows to hold what is in it, so a control at its right would travel the whole of that
 width while you were still looking at it, and at the left the same click closes what it just opened.
@@ -86,8 +93,8 @@ folding one uncovers what was already there instead of laying it out again. What
 is the part no pane is over — fitted to the whole width, a graph would put a third of itself behind
 them — while panning is left alone, since sliding something under a pane costs nothing.
 
-The **index** on the left is the plan's tree with a search over every
-group and every declaration; picking a result opens the tree to it and puts it in the middle of the
+The **index** on the left is the module tree with a search over every module and every
+declaration; picking a result opens the tree to it and puts it in the middle of the
 canvas, and the canvas pans and zooms from anywhere on it, boxes included. The **detail** on the
 right is the node itself: its state, its module, its doc comment, its source, and the declarations
 it rests on and that rest on it, each one a link to go there — and, where the build was told where
@@ -110,9 +117,8 @@ Two ways to look. The **whole graph** is the current expansion of the tree. A **
 drops the tree and draws one declaration's cone at full detail: everything it rests on and
 everything that rests on it, all the way down and all the way up. A cone cut off after so many steps
 has a boundary that lies — a box at the edge of it looks like a box that rests on nothing — so there
-is nothing to set, and the page asks first if the cone is too big to read. Four thousand
-declarations are a hairball; one theorem's cone
-is a diagram, and it is the level at which "why is this here" has an answer.
+is nothing to set, and the page asks first if the cone is too big to read. Thirty thousand
+declarations are a hairball; one theorem's cone is a diagram, and it is the level at which "why is this here" has an answer.
 
 A neighbourhood is a different drawing rather than a setting, so nothing switches to one: a
 declaration's own control, or Enter, draws its cone. While you are in one the ground goes dotted, and a
@@ -123,8 +129,8 @@ which comes back as you left it.
 is to copy the URL. The fragment is the node's address and nothing else:
 
 ```
-index.html#Numlib/Krylov
-index.html#Numlib/Krylov/CR,Numlib.Krylov.CR.isMinResIterate
+index.html#Numlib.Krylov
+index.html#Numlib.Krylov.CR,CR.isMinResidualIterate
 ```
 
 Opening one of those lands the page there in one layout, rather than drawing the areas and then
@@ -138,31 +144,33 @@ rather than pushed, so clicking around a drawing does not fill the back button w
 ## How a node is addressed
 
 ```
-Numlib/Krylov                                        a group
-Numlib/Krylov/CR,Numlib.Krylov.CR.isMinResIterate    a declaration
+Numlib.Krylov                               a module
+Numlib.Krylov.CR,CR.isMinResidualIterate    a declaration
 ```
 
-The path to the module, in the notation a module is written in, and then — for a declaration — a
-comma and the full name it is declared under. Both halves, because neither alone says where a thing
-is: a Lean name does not say which file it was written in, and a file does not say what is in it. The
-comma is what tells the two apart, and neither half can hold one; where an address has to go
+The module name, as `import` writes it, and then — for a declaration — a comma and the id it is
+declared under. Both halves, because neither alone says where a thing is: an id does not say which
+module it was written in, and a module name does not say what is in it; the two look alike, but a
+declaration's namespace need not be its module's name. The comma is what tells the two apart, and
+neither half can hold one; where an address has to go
 somewhere that cannot take a name as it stands, such as a URL, each part is escaped and the
 punctuation between them is left to read.
 
-A declaration is found by its own name, and the module in front of it is context rather than a second
-condition to satisfy: a declaration that has since moved to another file is still that declaration,
+A declaration is found by its own id, and the module in front of it is context rather than a second
+condition to satisfy: a declaration that has since moved to another module is still that declaration,
 and a link to it still arrives. This is the format the page puts in the address bar, and the one the
 detail pane hands you when you copy a declaration. `lib/derive.js` writes it down once — `address`
 and `refAt` — and everything that names a node goes through there.
 
 ## What it derives
 
-Only the three arrays are read: `groups` for the tree, `nodes` for `group`, `kind`, `state`, `desc`,
-`source`, `wrong` and `deprecated`, and `edges` for `from` and `to`. Everything else in the picture
+Only the two tables are read: `modules` for the tree — `name`, `parent`, `desc`, `exists`, `done`
+and `ready` — and `nodes` for `id`, `module`, `planned`, `kind`, `state`, `desc`, `source`, `wrong`,
+`deprecated`, and what each rests on, `deps` and `suggested` alike. Everything else in the picture
 is computed here, for the view on screen, every time it changes.
 
 * **The rollup.** Each declaration edge is carried up to whichever boxes are visible and the
-  parallel ones are merged, so two closed groups are joined by one line however many result
+  parallel ones are merged, so two closed modules are joined by one line however many
   dependencies run between them.
 * **Where an edge belongs.** Every edge is laid out — and drawn — in the deepest container holding
   both of its ends, between that container's own two children. So a view shows each dependency at
@@ -223,7 +231,7 @@ become markup. There is no `{@html}` anywhere, and a test asserts it.
 |---|---|
 | `src/App.svelte` | the window: the bars, and the two panes floating over the drawing |
 | `src/Grip.svelte` | the strip a side pane is dragged wider from |
-| `src/IndexPane.svelte` | the search and the plan's tree |
+| `src/IndexPane.svelte` | the search and the module tree |
 | `src/DetailPane.svelte` | whatever is selected, in full |
 | `src/Prose.svelte`, `src/Inline.svelte` | a Lean doc comment, from marked's tokens |
 | `src/StateDot.svelte` | the coloured dot that says what state a thing is in |
@@ -236,7 +244,7 @@ become markup. There is no `{@html}` anywhere, and a test asserts it.
 | `src/lib/state.svelte.js` | the state, and the few actions that change it |
 | `src/lib/util.js` | the colours, the formatting and the text measuring |
 | `src/lib/site.js` | what the build baked into the page: the graph, its download, the API docs |
-| `src/lib/format.js` | the compact form of a graph and the gzip around it, shared by the build and the page |
+| `src/lib/format.js` | the gzip around a graph, shared by the build and the page |
 | `test/ui.mjs` | the page driven by real mouse input, in a headless browser |
 
 ```
@@ -263,17 +271,14 @@ TRACKER_GRAPH=graph.json TRACKER_DOCS=docs npm run build
 
 **`TRACKER_GRAPH`** puts that graph in the page, compressed, in a `<script>` no browser will
 execute. The build pays for the compression once and every reader of the page would otherwise pay
-for the size of it forever, so it is done eagerly and twice over: the graph is rewritten into the
-compact form — the contract said by column rather than by row, an edge naming its ends by their
-index rather than spelling both out — and then gzipped, and `DecompressionStream` unpacks it on
-the way in. On the plan of a large project that is 90MB of page down to 4MB, most of it because
-the edges are nearly the whole of a graph and nearly the whole of each edge was two declaration
-ids written out in full. `src/lib/format.js` holds both halves, and `expand` is the exact inverse
-of `compact`, which is what lets the page hand back the file it was built from.
+for the size of it forever, so it is done eagerly: the graph is minified and gzipped, and
+`DecompressionStream` unpacks it on the way in. The contract already writes every id once and a
+dependency as an index, so gzip is all that is left to do: on the graph of every declaration of a
+large project that is 17MB of JSON down to 5MB in the page. The page hands back the same JSON it
+was built from.
 
-A graph the page is given rather than built with is still the contract as `tracker graph` prints
-it — that format is what other tools read, and nothing here changes it. A `.json.gz` may be
-dropped on the page as well as a `.json`; the first two bytes are what decides.
+A `.json.gz` may be dropped on the page as well as a `.json`; the first two bytes are what
+decides.
 
 What comes out is a page about that graph rather than a page that takes one, and it is the whole
 of the difference: the page opens on it, and every way of loading another — the button, the drop,
@@ -283,10 +288,10 @@ was built from, so that what the page is drawing is still a file you can have.
 
 **`TRACKER_DOCS`** is the root of a [doc-gen4](https://github.com/leanprover/doc-gen4) site,
 absolute or relative to wherever the page is published. The detail pane then links a declaration to
-its own anchor on its module's page — `<root>/Numlib/Krylov/CR.html#CR.isMinResIterate` — and a
-module to its page, since what the graph calls a group and a node id are exactly what doc-gen4
-names a page and an anchor by. It links only what the library actually has: a declaration that is
-still open is not in the docs, and neither is a module none of whose declarations are written yet.
+its own anchor on its module's page — `<root>/Numlib/Krylov/CR.html#CR.isMinResidualIterate` —
+and a module to its page, since a module name and an id are exactly what doc-gen4 names a page and
+an anchor by. It links only what the library actually has: a declaration that is still open is not
+in the docs, and neither is a module that does not exist yet.
 It needs `TRACKER_GRAPH`, and a build given it alone stops: it says where one project's
 declarations are written down, and a page that has not been given that project's graph has nothing
 to say it about.

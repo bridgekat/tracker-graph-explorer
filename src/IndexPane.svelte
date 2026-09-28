@@ -1,9 +1,9 @@
-<!-- The index: a search over every group and declaration, and the plan's tree.
+<!-- The index: a search over every module and declaration, and the module tree.
      Picking anything here selects it and opens the canvas to it. -->
 <script>
   import { Search } from "flowbite-svelte";
   import StateDot from "./StateDot.svelte";
-  import { app, select, toggleGroup } from "./lib/state.svelte.js";
+  import { app, select, toggleModule } from "./lib/state.svelte.js";
   import { fmt, plural, hueBar, hueFill, hueLine, kindHue } from "./lib/util.js";
 
   const LIST_CAP = 400;
@@ -26,18 +26,18 @@
       if (!t.sub) return;
       out.push({ t });
       if (!app.open.has(gi)) return;
-      if (t.kids.length) t.kids.forEach(walk);
-      else t.decls.forEach((d) => out.push({ d: app.base.decl[d], level: t.level + 1 }));
+      t.kids.forEach(walk);
+      t.decls.forEach((d) => out.push({ d: app.base.decl[d], level: t.level + 1 }));
     };
     app.base.treeRoots.forEach(walk);
     return out;
   });
 
-  /* what matches: groups by name, then declarations by id, the closest match first */
+  /* what matches: modules by name, then declarations by id, the closest match first */
   const hits = $derived.by(() => {
     if (!app.base || !query) return null;
     const q = query.toLowerCase();
-    const groups = app.base.tree
+    const modules = app.base.tree
       .filter((t) => t.sub && t.name.toLowerCase().includes(q))
       .slice(0, 40);
     const decls = [];
@@ -47,23 +47,23 @@
     }
     decls.sort((a, b) => a.rank - b.rank || a.d.id.length - b.d.id.length);
     return {
-      groups,
-      decls: decls.slice(0, Math.max(0, LIST_CAP - groups.length)).map((x) => x.d),
-      total: groups.length + decls.length,
+      modules,
+      decls: decls.slice(0, Math.max(0, LIST_CAP - modules.length)).map((x) => x.d),
+      total: modules.length + decls.length,
     };
   });
 
   const meta = $derived.by(() => {
     if (!app.base) return "";
     if (hits) {
-      const shown = hits.groups.length + hits.decls.length;
+      const shown = hits.modules.length + hits.decls.length;
       return shown < hits.total
         ? `${fmt(shown)} of ${fmt(hits.total)} matches shown`
         : plural(hits.total, "match", "matches");
     }
     return (
-      `${fmt(rows.length)} rows · ${fmt(app.base.meta.nodes)} results in ` +
-      `${fmt(app.base.meta.modules)} modules`
+      `${fmt(rows.length)} rows · ${fmt(app.base.meta.nodes)} declarations ` +
+      `(${fmt(app.base.meta.planned)} planned) in ${fmt(app.base.meta.modules)} modules`
     );
   });
 
@@ -83,9 +83,9 @@
     <Search
       id="exSearch"
       size="sm"
-      placeholder="Search a group or a declaration"
+      placeholder="Search a module or a declaration"
       autocomplete="off"
-      aria-label="Search a group or a declaration"
+      aria-label="Search a module or a declaration"
       oninput={onInput}
       class="py-1.5 text-xs"
     />
@@ -95,7 +95,7 @@
 
   <div id="exTree" class="min-h-0 flex-1 overflow-y-auto pb-2">
     {#if hits}
-      {#each hits.groups as t}
+      {#each hits.modules as t}
         <button
           class="{ROW} {HOVER} w-full"
           style="padding-left: 5px"
@@ -103,7 +103,7 @@
         >
           <StateDot state={t.state} />
           <span class="truncate">{t.short}</span>
-          <span class={KIND}>group</span>
+          <span class={KIND}>module</span>
         </button>
       {/each}
       {#each hits.decls as d}
@@ -113,7 +113,7 @@
           onclick={() => select({ t: 1, i: d.i }, true)}
         >
           <StateDot state={d.state} />
-          <span class="truncate font-mono" title={d.id}>{d.id}</span>
+          <span class="truncate font-mono {d.planned ? 'font-semibold' : ''}" title={d.id}>{d.id}</span>
         </button>
       {/each}
       {#if !hits.total}
@@ -123,7 +123,7 @@
       {#each rows as row (row.t ? "g" + row.t.i : "d" + row.d.i)}
         {#if row.t}
           <!-- two buttons side by side, so neither is nested in the other: the chevron
-               opens the group, the rest of the row selects it -->
+               opens the module, the rest of the row selects it -->
           <div
             class="flex items-center {HOVER} {isSel(0, row.t.i) ? SEL : ''}"
             style="padding-left: {5 + row.t.level * 13}px"
@@ -132,7 +132,7 @@
               class="shrink-0 rounded p-0.5 text-gray-500 hover:text-gray-950 dark:hover:text-white"
               aria-expanded={app.open.has(row.t.i)}
               aria-label={(app.open.has(row.t.i) ? "Collapse " : "Expand ") + row.t.name}
-              onclick={() => toggleGroup(row.t.i)}
+              onclick={() => toggleModule(row.t.i)}
             >
               <svg
                 width="9"
@@ -163,11 +163,11 @@
               <span class="{KIND} font-mono tabular-nums">{fmt(row.t.sub)}</span>
               <span
                 class="h-1 w-9 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800"
-                title="{fmt(row.t.byState.proved)} of {fmt(row.t.sub)} proved"
+                title="{fmt(row.t.byState.proved)} of {fmt(row.t.goal)}{row.t.measured === 'planned' ? ' planned' : ''} proved"
               >
                 <i
                   class="block h-full"
-                  style="width: {((row.t.byState.proved / row.t.sub) * 100).toFixed(1)}%;
+                  style="width: {((row.t.byState.proved / Math.max(1, row.t.goal)) * 100).toFixed(1)}%;
                          background: {hueBar(row.t.hue, row.t.tone, app.dark)}"
                 ></i>
               </span>
@@ -181,7 +181,7 @@
             onclick={() => select({ t: 1, i: row.d.i }, true)}
           >
             <StateDot state={row.d.state} />
-            <span class="truncate font-mono" title={row.d.id}>{row.d.label}</span>
+            <span class="truncate font-mono {row.d.planned ? 'font-semibold' : ''}" title={row.d.id}>{row.d.label}</span>
             <span
               class={BADGE}
               style="background: {hueFill(hue, 0, app.dark)}; color: {hueLine(hue, 0, app.dark)}"

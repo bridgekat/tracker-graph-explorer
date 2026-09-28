@@ -1,4 +1,4 @@
-<!-- The dot that says what state a group or a declaration is in, by colour. -->
+<!-- The dot that says what state a module or a declaration is in, by colour. -->
 <script>
   import { STATE_LABEL } from "./lib/util.js";
   let { state } = $props();

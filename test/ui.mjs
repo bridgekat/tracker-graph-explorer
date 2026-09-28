@@ -110,10 +110,10 @@ const check = (name, ok, detail) => {
   console.log(`${ok ? "  ok  " : " FAIL "} ${name}${detail ? "  — " + detail : ""}`);
 };
 
-/* where a group's box and its control are, in CSS pixels. The control is at the left of
+/* where a module's box and its control are, in CSS pixels. The control is at the left of
    the box, so the body is asked for past it rather than at the box's own left edge. */
 const locate = (prefix) => `
-  const g = [...document.querySelectorAll('#exSvg .ex-node.grp')]
+  const g = [...document.querySelectorAll('#exSvg .ex-node.mod')]
     .find(e => e.getAttribute('aria-label').startsWith(${JSON.stringify(prefix)}));
   if (!g) return null;
   const box = g.querySelector(':scope > .ex-box, :scope > .ex-cbg').getBoundingClientRect();
@@ -124,9 +124,25 @@ const locate = (prefix) => `
   };`;
 
 /* --- what can be checked without a browser at all --- */
+/* the size of one declaration's neighbourhood in this graph: everything it rests on and
+   everything that rests on it, over `deps` and `suggested` alike */
+const CONE_OF = "Krylov.IsMinResidualIterate.norm_residual_antitone";
+const CONE_SIZE = (() => {
+  const g = JSON.parse(readFileSync(GRAPH, "utf8"));
+  const down = g.nodes.map((n) => [...(n.deps || []), ...(n.suggested || [])]);
+  const up = g.nodes.map(() => []);
+  down.forEach((vs, u) => vs.forEach((v) => up[v].push(u)));
+  const seed = g.nodes.findIndex((n) => n.id === CONE_OF);
+  const out = new Set([seed]);
+  for (const adj of [down, up]) {
+    const seen = new Set([seed]), todo = [seed];
+    while (todo.length) for (const v of adj[todo.pop()]) if (!seen.has(v)) { seen.add(v); out.add(v); todo.push(v); }
+  }
+  return out.size;
+})();
 {
   const g = JSON.parse(readFileSync(GRAPH, "utf8"));
-  const texts = [...g.nodes.map((n) => n.desc || ""), ...g.groups.map((x) => x.desc || "")].filter(Boolean);
+  const texts = [...g.nodes.map((n) => n.desc || ""), ...g.modules.map((x) => x.desc || "")].filter(Boolean);
   let bad = 0, first = "";
   for (const t of texts) {
     try { marked.lexer(t); } catch (e) { bad++; if (!first) first = e.message; }
@@ -187,7 +203,7 @@ try {
     `${pinned.src}${pinned.baked ? ", baked in" : ""}`);
 
   /* --- select: click the body of a box --- */
-  let at = await evaluate(locate("Numlib/Krylov,"));
+  let at = await evaluate(locate("Numlib.Krylov,"));
   await clickAt(...at.body);
   let after = await evaluate(`return {
     title: document.querySelector('#exDetail h3') && document.querySelector('#exDetail h3').textContent,
@@ -197,7 +213,7 @@ try {
 
   /* where a box's control sits within it, and how wide the box is */
   const anchor = (prefix) => `
-    const g = [...document.querySelectorAll('#exSvg .ex-node.grp')]
+    const g = [...document.querySelectorAll('#exSvg .ex-node.mod')]
       .find(e => e.getAttribute('aria-label').startsWith(${JSON.stringify(prefix)}));
     const box = g.querySelector(':scope > .ex-box, :scope > .ex-cbg').getBoundingClientRect();
     const c = g.querySelector(':scope > .ex-toggle rect').getBoundingClientRect();
@@ -205,26 +221,27 @@ try {
 
   /* --- expand: click the ＋ --- */
   const before = await boxes();
-  const shutAt = await evaluate(anchor("Numlib/Krylov,"));
-  at = await evaluate(locate("Numlib/Krylov,"));
+  const shutAt = await evaluate(anchor("Numlib.Krylov,"));
+  at = await evaluate(locate("Numlib.Krylov,"));
   await clickAt(...at.toggle);
   const more = await boxes();
   /* --- and the control is at the edge that opening does not move ---
      A box grows to hold what is in it, so a control at its right travels the whole of
      that width while you are still looking at it. At the left it stays under the
      pointer, and the same click closes what it just opened. */
-  const openAt = await evaluate(anchor("Numlib/Krylov,"));
+  const openAt = await evaluate(anchor("Numlib.Krylov,"));
   check("the control stays put when the box opens",
     shutAt.off <= 1 && openAt.off <= 1 && openAt.w > shutAt.w + 100,
     `${shutAt.off}px in at ${shutAt.w}px wide, ${openAt.off}px in at ${openAt.w}px`);
-  const opened = await evaluate(`return !![...document.querySelectorAll('#exSvg .ex-node.grp')]
-    .find(e => e.getAttribute('aria-label') === 'Numlib/Krylov/Arnoldi, 28 results, proved. Enter to open it.')`);
+  const opened = await evaluate(`return !![...document.querySelectorAll('#exSvg .ex-node.mod')]
+    .find(e => /^Numlib\\.Krylov\\.Arnoldi, [\\d,]+ declarations?, proved\\. Enter to open it\\.$/
+      .test(e.getAttribute('aria-label')))`);
   check("＋ expands the box", more > before && opened, `${before} → ${more} boxes`);
 
-  /* --- the opened group is a container holding its children --- */
+  /* --- the opened module is a container holding its children --- */
   const nested = await evaluate(`
-    const k = [...document.querySelectorAll('#exSvg .ex-node.grp')]
-      .find(e => e.getAttribute('aria-label').startsWith('Numlib/Krylov,'));
+    const k = [...document.querySelectorAll('#exSvg .ex-node.mod')]
+      .find(e => e.getAttribute('aria-label').startsWith('Numlib.Krylov,'));
     const kids = k.querySelectorAll(':scope > g > .ex-node').length;
     const kb = k.getBoundingClientRect();
     const one = k.querySelector(':scope > g > .ex-node').getBoundingClientRect();
@@ -232,7 +249,7 @@ try {
   check("children sit inside the container", nested.kids > 10 && nested.inside, `${nested.kids} children`);
 
   /* --- collapse: click the − on the container header --- */
-  at = await evaluate(locate("Numlib/Krylov,"));
+  at = await evaluate(locate("Numlib.Krylov,"));
   await clickAt(...at.toggle);
   const back = await boxes();
   check("− collapses it again", back === before, `${more} → ${back} boxes`);
@@ -251,18 +268,18 @@ try {
     `${esc.sel} outlined, ${esc.dim} dimmed`);
 
   /* --- selecting an open container fades the graph around it, not what is in it --- */
-  at = await evaluate(locate("Numlib/Krylov,"));
+  at = await evaluate(locate("Numlib.Krylov,"));
   await clickAt(...at.toggle);
   await sleep(300);
   const head = await evaluate(`
-    const g = [...document.querySelectorAll('#exSvg .ex-node.grp')]
-      .find(e => e.getAttribute('aria-label').startsWith('Numlib/Krylov,'));
+    const g = [...document.querySelectorAll('#exSvg .ex-node.mod')]
+      .find(e => e.getAttribute('aria-label').startsWith('Numlib.Krylov,'));
     const r = g.querySelector(':scope > .ex-chead').getBoundingClientRect();
     return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)];`);
   await clickAt(...head);
   const within = await evaluate(`
-    const k = [...document.querySelectorAll('#exSvg .ex-node.grp')]
-      .find(e => e.getAttribute('aria-label').startsWith('Numlib/Krylov,'));
+    const k = [...document.querySelectorAll('#exSvg .ex-node.mod')]
+      .find(e => e.getAttribute('aria-label').startsWith('Numlib.Krylov,'));
     const edges = [...k.querySelectorAll('.ex-edge')];
     return {
       sel: k.classList.contains('sel'),
@@ -275,7 +292,7 @@ try {
   check("selecting an open container keeps its contents as they were",
     within.sel && within.kids > 0 && within.dim === 0 && within.edges > 0 && within.faint === 0 && within.outside > 0,
     `${within.kids} children, ${within.dim} dimmed; ${within.faint} of ${within.edges} edges faint; ${within.outside} dimmed outside`);
-  at = await evaluate(locate("Numlib/Krylov,"));
+  at = await evaluate(locate("Numlib.Krylov,"));
   await clickAt(...at.toggle);
 
   /* --- a drag pans and does not clear the selection --- */
@@ -287,7 +304,7 @@ try {
   check("drag does not clear the selection", stillSel === 1, `${stillSel} outlined`);
 
   /* --- a drag that starts on a box pans, and is not read as a click on it --- */
-  const other = await evaluate(locate("Numlib/Analysis,"));
+  const other = await evaluate(locate("Numlib.Analysis,"));
   const cam2 = await evaluate("return document.getElementById('exScene').getAttribute('transform')");
   await dragBy(other.body[0], other.body[1], 120, 50);
   const cam3 = await evaluate("return document.getElementById('exScene').getAttribute('transform')");
@@ -302,7 +319,7 @@ try {
      the container's own element, so what is being read is the rule and not whatever
      happens to be drawn at that point. */
   const strip = await evaluate(`
-    const g = document.querySelector('#exSvg .ex-node.grp.open');
+    const g = document.querySelector('#exSvg .ex-node.mod.open');
     if (!g) return null;
     const r = g.querySelector(':scope > .ex-cbg').getBoundingClientRect();
     const probe = async (y) => {
@@ -338,8 +355,8 @@ try {
         boldCode: d.querySelectorAll("b code, i code").length,
       };
     };
-    const table = await pick("NumlibSurface/SaadSparse");
-    const fenced = await pick("Numlib/Krylov/BiLanczos");
+    const table = await pick("NumlibSurface.SaadSparse");
+    const fenced = await pick("Numlib.Krylov.BiLanczos");
     const bold = await pick("Affine.Simplex.diam_mul_sin_sq_le");
     return { table, fenced, bold };
   `);
@@ -353,7 +370,7 @@ try {
   /* --- focusing a declaration deep inside a container --- */
   const deep = await evaluate(`
     const q = document.getElementById('exSearch');
-    q.value = 'isMinResIterate';
+    q.value = 'isMinResidualIterate';
     q.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise(r => setTimeout(r, 400));
     document.querySelectorAll('#exTree .tw')[0].click();
@@ -368,7 +385,7 @@ try {
         && !e.classList.contains('within'))
       .filter(e => parseFloat(getComputedStyle(e).opacity) > 0.2).length;
     /* a shut box that holds something in the cone must stay lit, or the cone lies */
-    const shutLit = [...document.querySelectorAll('#exSvg .ex-node.grp:not(.open):not(.dim)')].length;
+    const shutLit = [...document.querySelectorAll('#exSvg .ex-node.mod:not(.open):not(.dim)')].length;
     return {
       sel: document.querySelector('#exDetail h3') && document.querySelector('#exDetail h3').textContent,
       down: document.querySelectorAll('.ex-edge.lit-down').length,
@@ -380,7 +397,7 @@ try {
       faint, shutLit,
     };`);
   check("focusing a deep declaration lights the lines its cone runs along",
-    deep.sel === "isMinResIterate" && deep.down > 0 && deep.up > 0,
+    deep.sel === "isMinResidualIterate" && deep.down > 0 && deep.up > 0,
     `${deep.down} down, ${deep.up} up`);
   check("dashed still means only a reversed edge", deep.dash === "none", deep.dash);
   /* Weight is not one of the things a lit line says: the two halves of the cone are told
@@ -407,12 +424,12 @@ try {
     : "a build given no docs root links nowhere",
     docs.root
       ? (docs.href || "").startsWith(docs.root + "/Numlib/")
-        && docs.href.endsWith(".html#CR.isMinResIterate")
+        && docs.href.endsWith(".html#CR.isMinResidualIterate")
       : !docs.href,
     docs.href || "no link");
 
   /* --- the address bar, and a link back into the page ---
-     A node is addressed one way in this project — the module's path, then the name the
+     A node is addressed one way in this project — the module name, then the id the
      thing is declared under — and the page says it in the URL and in the detail pane's
      own box. The declaration focused above is still the one in the pane, so the address
      is its. Then a fragment somebody else could have sent: setting one takes the page to
@@ -421,11 +438,11 @@ try {
     return { hash: decodeURIComponent(location.hash).slice(1),
              shown: document.querySelector('#exDetail code').textContent };`);
   check("the address bar says which node you are on, in the one notation",
-    addr.hash === addr.shown && /^[^,]+\/[^,]+,.*isMinResIterate$/.test(addr.hash),
+    addr.hash === addr.shown && /^[^,]+\.[^,]+,.*isMinResidualIterate$/.test(addr.hash),
     addr.hash || "nothing");
 
   const landed = await evaluate(`
-    location.hash = '#Numlib/Eigen';
+    location.hash = '#Numlib.Eigen';
     await new Promise(r => setTimeout(r, 1200));
     ${SETTLE}
     return { title: document.querySelector('#exDetail h3').textContent,
@@ -433,7 +450,7 @@ try {
                .map(e => e.getAttribute('aria-label')) };`);
   check("a link into the page lands on the node it names",
     landed.title === "Eigen" && landed.sel.length === 1
-      && landed.sel[0].startsWith("Numlib/Eigen,"),
+      && landed.sel[0].startsWith("Numlib.Eigen,"),
     `${landed.title}, outlined ${JSON.stringify(landed.sel)}`);
 
   /* --- the cone is followed over what really touches what ---
@@ -444,19 +461,19 @@ try {
      either direction; what they share is that each touches a declaration in the same
      shut area, which is a path no dependency ever took. */
   const honest = await evaluate(`
-    location.hash = '#Numlib/Krylov/Iterate,Krylov.IsMinResIterate.norm_residual_antitone';
+    location.hash = '#Numlib.Krylov.Iterate,Krylov.IsMinResidualIterate.norm_residual_antitone';
     await new Promise(r => setTimeout(r, 1500));
     ${SETTLE}
     const at = (name) => [...document.querySelectorAll('#exSvg .ex-node.decl')]
       .find(e => e.getAttribute('aria-label').startsWith(name + ','));
-    const f = at('Krylov.IsMinResIterate.norm_residual_antitone');
-    const other = at('Krylov.IsMinResIterate.norm_residual_le_norm_aeval');
+    const f = at('Krylov.IsMinResidualIterate.norm_residual_antitone');
+    const other = at('Krylov.IsMinResidualIterate.norm_residual_le_norm_aeval');
     const r = f && f.getBoundingClientRect();
     return {
       sel: !!f && f.classList.contains('sel'),
       drawn: !!other,
       dim: !!other && other.classList.contains('dim'),
-      shut: document.querySelectorAll('#exSvg .ex-node.grp:not(.open):not(.dim)').length,
+      shut: document.querySelectorAll('#exSvg .ex-node.mod:not(.open):not(.dim)').length,
       at: r && [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)],
     };`);
   check("a box the focused one does not touch is dimmed",
@@ -477,12 +494,12 @@ try {
 
   /* --- a declaration carries the same control, doing what a declaration opens into ---
      One control, in one place, doing the one thing the box it is on can be opened into:
-     a group into the boxes it holds, a declaration into the neighbourhood it sits in.
+     a module into the boxes it holds, a declaration into the neighbourhood it sits in.
      That neighbourhood used to be reachable by a double-click and by nothing else. */
   const nb = await evaluate(`
     const d = [...document.querySelectorAll('#exSvg .ex-node.decl')]
       .find(e => e.getAttribute('aria-label')
-        .startsWith('Krylov.IsMinResIterate.norm_residual_antitone,'));
+        .startsWith('Krylov.IsMinResidualIterate.norm_residual_antitone,'));
     const box = d.querySelector(':scope > .ex-box').getBoundingClientRect();
     const c = d.querySelector(':scope > .ex-toggle rect').getBoundingClientRect();
     return { off: Math.round(c.x - box.x),
@@ -500,10 +517,10 @@ try {
     return { bar: !!document.getElementById('exConeBar'),
              of: (document.getElementById('exConeOf') || {}).textContent || '',
              decls: document.querySelectorAll('#exSvg .ex-node.decl').length,
-             groups: document.querySelectorAll('#exSvg .ex-node.grp').length };`);
+             modules: document.querySelectorAll('#exSvg .ex-node.mod').length };`);
   check("and it draws that neighbourhood, whole and on its own",
-    drew.bar && drew.groups === 0 && drew.decls === 17,
-    `${drew.decls} declarations, ${drew.groups} groups, of ${drew.of.trim()}`);
+    drew.bar && drew.modules === 0 && drew.decls === CONE_SIZE,
+    `${drew.decls} of ${CONE_SIZE} declarations, ${drew.modules} modules, of ${drew.of.trim()}`);
 
   /* back out to the whole graph, which comes back as it was left */
   await evaluate(`
@@ -553,8 +570,8 @@ try {
      One hue in two strengths: the bar is the hue, the ground under it is the same hue
      let down to a tint, so the two are never the same colour. */
   const prog = await evaluate(`
-    const g = [...document.querySelectorAll('#exSvg .ex-node.grp')]
-      .find(e => e.getAttribute('aria-label').startsWith('Numlib/Eigen,'));
+    const g = [...document.querySelectorAll('#exSvg .ex-node.mod')]
+      .find(e => e.getAttribute('aria-label').startsWith('Numlib.Eigen,'));
     const box = g.querySelector(':scope > .ex-box');
     const p = g.querySelector(':scope > .ex-prog');
     return { h: +box.getAttribute('height'), ph: +p.getAttribute('height'), py: +p.getAttribute('y'),

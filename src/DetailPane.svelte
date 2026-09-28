@@ -12,12 +12,9 @@
 
   const DEP_CAP = 60;
   const B = $derived(app.base);
-  const group = $derived(app.sel?.t === 0 ? B.tree[app.sel.i] : null);
+  const module = $derived(app.sel?.t === 0 ? B.tree[app.sel.i] : null);
   const decl = $derived(app.sel?.t === 1 ? B.decl[app.sel.i] : null);
-  const states = $derived(group ? STATES.filter((s) => group.byState[s]) : []);
-  /* a group has a page in the API docs once its module is in the library, which is
-     what one of its own declarations being anything but open says */
-  const attached = $derived(!!group && group.decls.some((i) => B.decl[i].state !== "open"));
+  const states = $derived(module ? STATES.filter((s) => module.byState[s]) : []);
   /* how the project writes down which declaration this is: its module, then its name */
   const addr = $derived(decl ? address(B, app.sel) : "");
 
@@ -47,23 +44,25 @@
       Pick a box on the canvas, or an entry in the index, to read what it says and what it
       rests on.
     </p>
-  {:else if group}
+  {:else if module}
     <div class="mb-2 flex flex-wrap gap-1.5">
-      <Badge color="gray">{group.isModule ? "module" : "group"}</Badge>
-      <Badge style={stateStyle(group.state)}>{STATE_LABEL[group.state]}</Badge>
-      {#if group.done}<Badge color="green">done</Badge>
-      {:else if group.ready}<Badge color="yellow">ready to work on</Badge>{/if}
+      <Badge color="gray">module</Badge>
+      <Badge style={stateStyle(module.state)}>{STATE_LABEL[module.state]}</Badge>
+      {#if module.done}<Badge color="green">done</Badge>
+      {:else if module.ready}<Badge color="yellow">ready to work on</Badge>{/if}
+      {#if !module.exists}<Badge color="gray">not written yet</Badge>{/if}
     </div>
-    <h3 class="text-base font-semibold text-gray-950 dark:text-white">{group.label}</h3>
-    <div class="mt-1 {MONO} text-gray-500">module {group.name}</div>
+    <h3 class="text-base font-semibold text-gray-950 dark:text-white">{module.label}</h3>
+    <div class="mt-1 {MONO} text-gray-500">{module.name}</div>
 
-    {#if docsRoot && attached}{@render docs(moduleDocs(group.name))}{/if}
+    <!-- a module has a page in the API docs once it exists -->
+    {#if docsRoot && module.exists}{@render docs(moduleDocs(module.name))}{/if}
 
     <div class="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
       {#each states as s}
         <i
-          style="background: var(--st-{s}); width: {((group.byState[s] / group.sub) * 100).toFixed(2)}%"
-          title="{fmt(group.byState[s])} {STATE_LABEL[s]}"
+          style="background: var(--st-{s}); width: {((module.byState[s] / Math.max(1, module.goal)) * 100).toFixed(2)}%"
+          title="{fmt(module.byState[s])} {STATE_LABEL[s]}"
         ></i>
       {/each}
     </div>
@@ -71,21 +70,26 @@
       {#each states as s}
         <span class="flex items-center gap-1.5">
           <StateDot state={s} />
-          <b class="text-gray-950 tabular-nums dark:text-white">{fmt(group.byState[s])}</b>
+          <b class="text-gray-950 tabular-nums dark:text-white">{fmt(module.byState[s])}</b>
           {STATE_LABEL[s]}
         </span>
       {/each}
     </div>
 
-    {#if group.desc}
+    <p class="mt-1.5 text-[11px] text-gray-500">
+      {module.measured === "planned" ? "of its planned declarations" : "of its declarations; none are planned"}
+      · {plural(module.sub, "declaration")} in all
+    </p>
+
+    {#if module.desc}
       <h4 class={H4}>What it is for</h4>
-      <Prose text={group.desc} />
+      <Prose text={module.desc} />
     {/if}
 
-    {#if group.kids.length}
-      <h4 class={H4}>{plural(group.kids.length, "child group")}</h4>
+    {#if module.kids.length}
+      <h4 class={H4}>{plural(module.kids.length, "module")} under it</h4>
       <div class="flex flex-col">
-        {#each group.kids as k}
+        {#each module.kids as k}
           <button class={ROW} onclick={() => select({ t: 0, i: k }, true)}>
             <StateDot state={B.tree[k].state} />
             <span class="truncate">{B.tree[k].label}</span>
@@ -95,13 +99,14 @@
           </button>
         {/each}
       </div>
-    {:else if group.decls.length}
-      <h4 class={H4}>{plural(group.decls.length, "declaration")}</h4>
-      {@render list(group.decls)}
+    {/if}
+    {#if module.decls.length}
+      <h4 class={H4}>{plural(module.decls.length, "declaration")} of its own</h4>
+      {@render list(module.decls)}
     {/if}
   {:else}
     <div class="mb-2 flex flex-wrap gap-1.5">
-      <Badge color="gray">{decl.kind}</Badge>
+      <Badge color="gray">{decl.planned ? "planned " : ""}{decl.kind}</Badge>
       <Badge style={stateStyle(decl.state)}>{STATE_LABEL[decl.state]}</Badge>
       {#if decl.deprecated}<Badge color="red">deprecated</Badge>{/if}
     </div>
@@ -150,14 +155,14 @@
     {#if B.dout[decl.i].length}
       {@render list(B.dout[decl.i])}
     {:else}
-      <p class={MUTED}>Nothing in the plan; it stands on the ambient library alone.</p>
+      <p class={MUTED}>Nothing in the project; it stands on the ambient library alone.</p>
     {/if}
 
     <h4 class={H4}>{plural(B.din[decl.i].length, "declaration")} rest on it</h4>
     {#if B.din[decl.i].length}
       {@render list(B.din[decl.i])}
     {:else}
-      <p class={MUTED}>Nothing tracked uses it yet.</p>
+      <p class={MUTED}>Nothing in the project uses it yet.</p>
     {/if}
   {/if}
 </div>
@@ -174,7 +179,7 @@
     {#each items.slice(0, DEP_CAP) as di}
       <button class={ROW} onclick={() => select({ t: 1, i: di }, true)}>
         <StateDot state={B.decl[di].state} />
-        <span class="truncate font-mono" title={B.decl[di].id}>{B.decl[di].label}</span>
+        <span class="truncate font-mono {B.decl[di].planned ? 'font-semibold' : ''}" title={B.decl[di].id}>{B.decl[di].label}</span>
         <span class="ms-auto shrink-0 truncate text-[10px] text-gray-500">
           {B.tree[B.decl[di].g].label}
         </span>

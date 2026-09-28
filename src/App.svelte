@@ -108,7 +108,7 @@
     <aside
       id="exSide"
       class="{PANE} ex-pane ex-pane-left {app.shut.index ? 'ex-pane-shut' : ''}"
-      aria-label="Index of groups and declarations"
+      aria-label="Index of modules and declarations"
     >
       <IndexPane />
     </aside>
