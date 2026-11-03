@@ -8,7 +8,7 @@
   import { declDocs, docsRoot, moduleDocs } from "./lib/site.js";
   import { app, select } from "./lib/state.svelte.js";
   import { STATE_LABEL, fmt, plural } from "./lib/util.js";
-  import { STATES, address } from "./lib/derive.js";
+  import { METRICS, STATES, address } from "./lib/derive.js";
 
   const DEP_CAP = 60;
   const B = $derived(app.base);
@@ -36,7 +36,18 @@
   const MONO = "font-mono text-[11px] break-all";
   const MUTED = "text-xs text-gray-500";
   const EXT = { target: "_blank", rel: "noopener noreferrer" };
+  /* the figures `tracker graph --metrics` exported, other than the count of declarations */
+  const figures = (m) =>
+    METRICS.filter(([k]) => k !== "decls" && B.meta.hasMetric[k] && m[k] !== undefined)
+      .map(([k, , unit]) => plural(m[k], unit));
 </script>
+
+{#snippet sizes(m)}
+  {@const fs = figures(m)}
+  {#if fs.length}
+    <p id="exSizes" class="mt-1.5 text-[11px] text-gray-500">{fs.join(" · ")}</p>
+  {/if}
+{/snippet}
 
 <div id="exDetail" class="min-h-0 flex-1 overflow-y-auto p-3">
   {#if !app.sel}
@@ -80,6 +91,7 @@
       {module.measured === "planned" ? "of its planned declarations" : "of its declarations; none are planned"}
       · {plural(module.sub, "declaration")} in all
     </p>
+    {@render sizes(module.metric)}
 
     {#if module.desc}
       <h4 class={H4}>What it is for</h4>
@@ -130,6 +142,7 @@
         onclick={() => copy(addr)}>{copied ? "copied" : "copy"}</Button
       >
     </div>
+    {@render sizes(decl.metric)}
     {#if docsRoot && decl.state !== "open"}
       {@render docs(declDocs(B.tree[decl.g].name, decl.id))}
     {/if}

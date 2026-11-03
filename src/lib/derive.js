@@ -12,6 +12,15 @@
    scene.js calls the second once per container and hands what survives to the
    layout engine; nothing here knows what a container is. */
 const STATES = ["proved", "stated", "open", "axioms", "wrong"];
+/* What a box can count: [key, menu label, unit]. A declaration's own figures come from
+   `tracker graph --metrics`; a module's are the sums over every declaration under it. */
+const METRICS = [
+  ["decls", "Declarations", "declaration"],
+  ["lines", "Lines of source", "line"],
+  ["chars", "Characters of source", "character"],
+  ["size", "Term size", "term node"],
+];
+const num = (v) => (Number.isFinite(v) && v >= 0 ? v : undefined);
 const KEY = 1048576;                     /* pair-key radix; graphs stay well under it */
 
 function zeroStates() {
@@ -118,17 +127,22 @@ function buildBase(g) {
     i, id: n.id, label: lastSeg(n.id, "."), g: home(n.module), planned: !!n.planned,
     kind: n.kind || "other", state: n.wrong ? "wrong" : normState(n.state),
     desc: n.desc || "", source: n.source || null,
-    wrong: n.wrong || null, deprecated: n.deprecated || null
+    wrong: n.wrong || null, deprecated: n.deprecated || null,
+    metric: { decls: 1, lines: num(n.lines), chars: num(n.chars), size: num(n.size) }
   }));
+  const hasMetric = {};
+  for (const [k] of METRICS) hasMetric[k] = D.some((d) => d.metric[k] !== undefined);
   /* Attach each declaration to its module and to every module above it. Progress is
      counted over the planned declarations, as `tracker status` counts it: they are what
      the plan asks for, and the rest are helpers, nearly always proved. A module with no
      planned declaration in or under it is measured by all of its declarations instead.
      `sub` counts every declaration either way: it is how big a module is. */
   const all = T.map(() => zeroStates());
+  T.forEach((t) => { t.metric = { decls: 0, lines: 0, chars: 0, size: 0 }; });
   D.forEach((d) => {
     T[d.g].decls.push(d.i);
     for (let cur = d.g; cur !== null; cur = T[cur].parent) {
+      for (const [k] of METRICS) T[cur].metric[k] += d.metric[k] || 0;
       T[cur].subDecls.push(d.i);
       all[cur][d.state]++;
       if (d.planned) T[cur].byState[d.state]++;
@@ -182,7 +196,8 @@ function buildBase(g) {
     tree: T, treeRoots, decl: D, dedges: DE, dout, din,
     meta: {
       nodes: D.length, modules: T.filter((t) => t.decls.length).length,
-      planned: D.filter((d) => d.planned).length
+      planned: D.filter((d) => d.planned).length,
+      hasMetric
     }
   };
 }
@@ -329,18 +344,17 @@ function refAt(base, addr, unesc = (s) => s) {
    the walk downwards stop the walk upwards: a declaration the seeds rest on can also
    rest on them — through another seed, or around a cycle — and reaching it downwards
    first would leave everything above it out of the picture. --- */
+/* everything reachable from the seeds along `adj`, the seeds themselves only if a
+   path leads back to them */
+function reach(adj, seeds) {
+  const seen = new Set(), todo = [...seeds];
+  while (todo.length) {
+    for (const v of adj[todo.pop()]) if (!seen.has(v)) { seen.add(v); todo.push(v); }
+  }
+  return seen;
+}
 function cone(base, seeds) {
-  const out = new Set(seeds);
-  const expand = (adj) => {
-    const seen = new Set(seeds), todo = seeds.slice();
-    while (todo.length) {
-      const u = todo.pop();
-      for (const v of adj[u]) if (!seen.has(v)) { seen.add(v); out.add(v); todo.push(v); }
-    }
-  };
-  expand(base.dout);                          /* what they rest on */
-  expand(base.din);                           /* what rests on them */
-  return out;
+  return new Set([...seeds, ...reach(base.dout, seeds), ...reach(base.din, seeds)]);
 }
 
-export { STATES, KEY, buildBase, reduce, cone, address, refAt };
+export { STATES, METRICS, KEY, buildBase, reduce, reach, cone, address, refAt };

@@ -31,6 +31,7 @@
     setCone,
     setEdges,
     setInset,
+    setMetric,
     showTree,
     togglePane,
     toggleModule,
@@ -38,6 +39,7 @@
   } from "./lib/state.svelte.js";
   import { hasBaked } from "./lib/site.js";
   import { fmt } from "./lib/util.js";
+  import { METRICS } from "./lib/derive.js";
 
   let svg, viewport;
   let tip = $state(null);
@@ -252,8 +254,27 @@
   </div>
 
   <!-- The zoom belongs to the drawing rather than to the window, so it sits on it, in
-       the corner nothing is ever laid out into. -->
+       the corner nothing is ever laid out into. Beside it, what the number on each box
+       counts; a figure the graph was exported without is offered but cannot be picked. -->
   <div class="ex-hud ex-hud-foot">
+    {#if app.base}
+      <label class="ex-hud-l {CARD} gap-1.5 px-2 py-1 text-[11px] text-gray-500">
+        Count
+        <select
+          id="exMetric"
+          class="rounded border border-gray-200 bg-transparent py-0.5 ps-1.5 pe-6 text-xs
+                 text-gray-700 dark:border-gray-700 dark:text-gray-300"
+          value={app.metric}
+          onchange={(e) => setMetric(e.currentTarget.value)}
+        >
+          {#each METRICS as [k, text]}
+            <option value={k} disabled={!app.base.meta.hasMetric[k]}>
+              {text}{app.base.meta.hasMetric[k] ? "" : " (not exported)"}
+            </option>
+          {/each}
+        </select>
+      </label>
+    {/if}
     <div class="ex-hud-c {CARD} gap-1 px-1.5 py-1">
       <Button
         id="exZoomOut"

@@ -5,7 +5,7 @@
    the pointer moves would cost more than drawing it. Svelte owns the state and the
    chrome; this owns one <svg> and redraws it when told to. */
 import * as SC from "./scene.js";
-import { KEY } from "./derive.js";
+import { KEY, METRICS, reach } from "./derive.js";
 import {
   el, css, fmt, plural, textWidth, ellipsis, kindHue, STATE_LABEL, FLAGGED,
   hueFill, hueLine, hueBar, hueWash,
@@ -19,7 +19,10 @@ const ANIM_MAX = 4000;              /* boxes, old and new together, past which a
 
 const r2 = (v) => Math.round(v * 10) / 10;
 const clampK = (k) => Math.max(K_MIN, Math.min(K_MAX, k));
-const shortNum = (v) => (v > 9999 ? Math.round(v / 1000) + "k" : fmt(v));
+const shortNum = (v) =>
+  v === undefined ? "–"
+    : v >= 999500 ? (v >= 9.95e6 ? Math.round(v / 1e6) : (v / 1e6).toFixed(1)) + "M"
+      : v > 9999 ? Math.round(v / 1000) + "k" : fmt(v);
 const refOf = (n) => (n.kind === "module" ? { t: 0, i: n.gi } : { t: 1, i: n.di });
 
 /* ---------- measuring a box ----------
@@ -45,7 +48,7 @@ export function measure(n) {
   }
   const font = isModule ? fonts.module : n.planned ? fonts.planned : fonts.decl;
   /* every box carries its own control, so every box keeps the room for one */
-  const chrome = PAD_W + TOG_W + (isModule ? NUM_W : 0);
+  const chrome = PAD_W + TOG_W + (n.showNum ? NUM_W : 0);
   /* ceil, so the room left for the label is never a fraction of a pixel short of
      what the label actually measured */
   n.w = Math.max(58, Math.min(MAX_W, Math.ceil(textWidth(n.label, font)) + chrome));
@@ -65,6 +68,7 @@ export function createCanvas({ svg, viewport, on }) {
   let coneCache = new Map(), ownedBy = null;
   let Z = { k: 1, x: 0, y: 0 };
   let sel = null, hover = null;
+  let metric = "decls";               /* what the boxes count, for the tooltip */
 
   /* ================= colour =================
 
@@ -169,7 +173,7 @@ export function createCanvas({ svg, viewport, on }) {
     g.appendChild(P.lab = el("text", {
       class: "ex-lab", "text-anchor": isModule ? "start" : "middle",
     }, n.text));
-    if (isModule) g.appendChild(P.num = el("text", { class: "ex-num", "text-anchor": "end" }, shortNum(n.count)));
+    if (n.showNum) g.appendChild(P.num = el("text", { class: "ex-num", "text-anchor": "end" }, shortNum(n.value)));
     g.appendChild(P.tog = control(n, P));
     geometry(g, n, n.w, n.h);
   }
@@ -185,7 +189,7 @@ export function createCanvas({ svg, viewport, on }) {
     g.appendChild(P.box = el("rect", { class: "ex-cbg", x: 0, y: 0, rx: RX_C, fill: "none", stroke: lineOf(n) }));
     g.appendChild(el("text", { class: "ex-chead", x: TOG_W + 5, y: SC.HEAD - 6.5 },
       ellipsis(n.label, fonts.module, Math.max(20, n.w - NUM_W - TOG_W - 18))));
-    g.appendChild(P.num = el("text", { class: "ex-cnum", y: SC.HEAD - 6.5, "text-anchor": "end" }, shortNum(n.count)));
+    g.appendChild(P.num = el("text", { class: "ex-cnum", y: SC.HEAD - 6.5, "text-anchor": "end" }, shortNum(n.value)));
     g.appendChild(P.tog = control(n, P));
     geometry(g, n, n.w, n.h);
   }
@@ -208,7 +212,8 @@ export function createCanvas({ svg, viewport, on }) {
     if (P.lab) {
       /* a module writes its title from the left, after its control; a declaration writes
          its own in the middle of whatever room the control leaves */
-      P.lab.setAttribute("x", r2(n.kind === "decl" ? TOG_W + (w - TOG_W) / 2 : TOG_W + 5));
+      const room = w - TOG_W - (n.showNum ? NUM_W : 0);
+      P.lab.setAttribute("x", r2(n.kind === "decl" ? TOG_W + room / 2 : TOG_W + 5));
       P.lab.setAttribute("y", r2(strip / 2 + 3.6));
     }
     if (P.num) {
@@ -355,14 +360,6 @@ export function createCanvas({ svg, viewport, on }) {
   }
 
   /* ================= focus ================= */
-  function reach(adj, seeds) {
-    const seen = new Set(), q = seeds.slice();
-    while (q.length) {
-      const u = q.pop();
-      for (const v of adj[u]) if (!seen.has(v)) { seen.add(v); q.push(v); }
-    }
-    return seen;
-  }
   /* which declarations each box stands for: a declaration's box stands for it alone, a
      shut module's box for every declaration under it, and an open container for none of
      its own, since its children are standing for all of them */
@@ -764,11 +761,18 @@ export function createCanvas({ svg, viewport, on }) {
      and would read a rectangle still in motion while one scene becomes the next. */
   const onTitle = (e, n) =>
     !n.expanded || e.clientY - corner.y - (n.ay * Z.k + Z.y) <= SC.HEAD * Z.k;
+  /* what the box's figure is, when it counts something other than declarations */
+  const metricRow = (n) => {
+    if (!n.showNum || n.value === undefined) return null;
+    const m = METRICS.find((x) => x[0] === metric);
+    return m && m[0] !== "decls" ? { text: plural(n.value, m[2]) } : null;
+  };
   function tipFor(e, n) {
     if (!onTitle(e, n)) { on.tip(null); return; }
     const c = coneOf(n), rows = [];
     if (n.kind === "module") {
       rows.push({ text: plural(n.count, "declaration") + (n.expanded ? " · open" : "") });
+      if (metricRow(n)) rows.push(metricRow(n));
       rows.push({
         state: n.state,
         text: `${STATE_LABEL[n.state]} · ${fmt(n.proved)} of ${fmt(n.goal)}`
@@ -778,6 +782,7 @@ export function createCanvas({ svg, viewport, on }) {
     } else {
       rows.push({ text: `${n.planned ? "planned" : "unplanned"} ${n.declKind} in ${n.module}` });
       rows.push({ state: n.state, text: STATE_LABEL[n.state] });
+      if (metricRow(n)) rows.push(metricRow(n));
       rows.push({ text: "↵ draws its neighbourhood" });
     }
     rows.push({ text: `rests on ${c.below.size} · ${c.above.size} rest on it` });
@@ -874,6 +879,7 @@ export function createCanvas({ svg, viewport, on }) {
 
   return {
     setBase(b) { B = b; },
+    setMetric(m) { metric = m; },
     /* a new scene, with the camera told what to hold on to */
     setScene(scene, opts = {}) {
       const was = opts.anchor && nodeFor(opts.anchor);

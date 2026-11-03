@@ -24,10 +24,14 @@ const BUSY = 200;              /* children past which a container is laid out fo
 
 /* ---------- what is visible ----------
    o.open is the set of open modules; o.cone, if given, is a set of declarations to
-   draw on their own instead of the tree; o.measure sizes a box before layout. */
+   draw on their own instead of the tree; o.metric is what a box counts (a key of
+   TD.METRICS); o.measure sizes a box before layout. */
 function assemble(B, o) {
   const nodes = [], owner = new Int32Array(B.decl.length).fill(-1);
   const add = (n) => { n.id = nodes.length; nodes.push(n); return n; };
+  /* A module always writes its figure; a declaration counts one of itself, which is not
+     worth writing, so it writes one only when the figure is something else. */
+  const metric = o.metric || "decls";
 
   function declNode(di, parent) {
     const d = B.decl[di], t = B.tree[d.g];
@@ -36,6 +40,7 @@ function assemble(B, o) {
       label: d.label, name: d.id, module: t.name, sort: d.id,
       count: 1, goal: 1, proved: d.state === "proved" ? 1 : 0, state: d.state,
       declKind: d.kind, planned: d.planned,
+      value: d.metric[metric], showNum: metric !== "decls",
     });
     owner[di] = n.id;
     return n;
@@ -49,6 +54,7 @@ function assemble(B, o) {
       label: t.label, name: t.name, short: t.short, sort: t.name,
       count: t.sub, goal: t.goal, proved: t.byState.proved, state: t.state,
       hue: t.hue, tone: t.tone,
+      value: t.metric[metric], showNum: true,
     });
     /* an open module holds the modules under it and its own declarations: a module
        may be both a file and a directory of others */

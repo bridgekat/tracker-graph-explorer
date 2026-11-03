@@ -18,6 +18,7 @@ export const app = $state({
   sel: null,
   coneSeed: null,                 /* what the neighbourhood on screen is of, or the tree */
   edges: "red",
+  metric: "decls",                /* what each box counts: a key of TD.METRICS */
   shut: { index: false, detail: false },   /* a side pane folded away */
   pane: { index: 330, detail: 400 },       /* and how wide it is when it is not */
   sizing: false,                  /* a pane is being dragged wider: styles/shell.css */
@@ -30,6 +31,7 @@ let canvas = null;
 export function attachCanvas(c) {
   canvas = c;
   c.setEdges(app.edges);
+  c.setMetric(app.metric);
   /* A graph baked into the page is read before the canvas exists, so the expansion
      readText chose has nothing to draw it on and rebuild() gave up. Drawing it is this
      attachment's job; a page that arrives at its graph any other way already has one.
@@ -45,7 +47,7 @@ export const setInset = (l, r) => canvas?.setInset(l, r);
 
 /* ---------- building ---------- */
 function assembleScene() {
-  const opts = { open: app.open, measure };
+  const opts = { open: app.open, measure, metric: app.metric };
   if (app.coneSeed) {
     const s = app.coneSeed;
     const seeds = s.t === 1 ? [s.i] : app.base.tree[s.i].subDecls;
@@ -189,6 +191,13 @@ export function setTheme(on) {
   document.documentElement.classList.toggle("dark", on);
   canvas?.repaint();
 }
+/* A figure changes the width of every box that writes one, so the scene is laid out again. */
+export function setMetric(m) {
+  if (app.metric === m) return;
+  app.metric = m;
+  canvas?.setMetric(m);
+  rebuild({ centreOn: app.sel });
+}
 export function setEdges(mode) { app.edges = mode; canvas?.setEdges(mode); }
 /* ---------- the side panes ----------
    They float over the drawing rather than dividing it, so what a pane costs the drawing
@@ -225,6 +234,9 @@ export function readGraph(g, label) {
   app.src = label;
   app.sel = null;
   app.coneSeed = null;
+  /* a graph exported without the figure the boxes were counting goes back to counting
+     declarations, which every graph has */
+  if (!base.meta.hasMetric[app.metric]) { app.metric = "decls"; canvas?.setMetric("decls"); }
   canvas?.setBase(base);
   /* the areas: the picture of the project that fits on a screen */
   const depth = base.tree.length > 40 ? 1 : 2;

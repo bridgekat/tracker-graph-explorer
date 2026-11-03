@@ -1,5 +1,5 @@
 {
-  "name": "tracker-viz",
+  "name": "tracker-graph-explorer",
   "version": "1.0.0",
   "private": true,
   "description": "The drawing for `tracker graph`: one HTML file that walks the dependency graph of a Lean project from its areas down to a single theorem.",

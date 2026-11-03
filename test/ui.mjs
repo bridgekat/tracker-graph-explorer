@@ -15,6 +15,8 @@ const BROWSERS = [
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "/usr/bin/chromium", "/usr/bin/google-chrome",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
 ].filter(Boolean);
 const EDGE = BROWSERS.find((p) => existsSync(p));
 if (!EDGE) {
@@ -583,6 +585,48 @@ try {
       && /^hsl\(/.test(prog.fill) && prog.fill !== prog.ground,
     `${prog.pw.toFixed(1)}/${prog.bw} wide, ${prog.ph}/${prog.h} tall, ${prog.fill} on ${prog.ground}`);
 
+  /* --- what the number on each box counts ---
+     The dropdown offers every figure, and the ones the graph was not exported with
+     (`tracker graph --metrics`) cannot be picked. A module's figure is the sum over every
+     declaration under it, and a declaration writes its own only when it is not 1. */
+  {
+    const g = JSON.parse(readFileSync(GRAPH, "utf8"));
+    const has = g.nodes.some((n) => Number.isFinite(n.size));
+    const offered = await evaluate(`
+      const s = document.getElementById('exMetric');
+      return s && { value: s.value, disabled: [...s.options].filter(o => o.disabled).map(o => o.value) };`);
+    check("the dropdown counts declarations, and offers only what the graph has",
+      offered && offered.value === "decls" && offered.disabled.includes("size") === !has,
+      offered ? `${offered.value}; not exported: ${offered.disabled.join(", ") || "none"}` : "no dropdown");
+    if (has) {
+      const short = (v) => v >= 999500 ? (v >= 9.95e6 ? Math.round(v / 1e6) : (v / 1e6).toFixed(1)) + "M"
+        : v > 9999 ? Math.round(v / 1000) + "k" : v.toLocaleString("en-US");
+      const name = "Numlib.Krylov";
+      const want = g.nodes.reduce((a, n) => {
+        const m = g.modules[n.module]?.name || "";
+        return a + (m === name || m.startsWith(name + ".") ? n.size || 0 : 0);
+      }, 0);
+      const shown = await evaluate(`
+        const s = document.getElementById('exMetric');
+        s.value = 'size'; s.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 300));
+        for (let i = 0; i < 100 && document.getElementById('exBusy'); i++) await new Promise(r => setTimeout(r, 100));
+        ${SETTLE}
+        const k = [...document.querySelectorAll('#exSvg .ex-node.mod')]
+          .find(e => e.getAttribute('aria-label').startsWith('${name},'));
+        const num = k && k.querySelector(':scope > .ex-num, :scope > .ex-cnum');
+        const decl = document.querySelector('#exSvg .ex-node.decl');
+        const out = { mod: num && num.textContent, decl: decl ? !!decl.querySelector(':scope > .ex-num') : null };
+        s.value = 'decls'; s.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 300));
+        for (let i = 0; i < 100 && document.getElementById('exBusy'); i++) await new Promise(r => setTimeout(r, 100));
+        ${SETTLE}
+        return out;`);
+      check("picking term size puts the module's total on its box", shown.mod === short(want),
+        `${name}: ${shown.mod}, expected ${short(want)}; a declaration writes one: ${shown.decl}`);
+    }
+  }
+
   /* --- the whole project at declaration depth still has its edges ---
      A scene must never be parked in $state, which deep-proxies every node in it; the
      canvas then writes its edge layers onto one identity and the edge records read
@@ -612,6 +656,16 @@ try {
   check("the whole project at declaration depth has its edges",
     past.nodes > 1000 && past.edges > 1000,
     `${past.nodes} nodes, ${past.edges} edges`);
+
+  /* --- a declaration no plan names is drawn with a dashed outline, a planned one solid --- */
+  const outlines = await evaluate(`
+    const dash = (sel) => [...document.querySelectorAll(sel)].slice(0, 200)
+      .map(g => getComputedStyle(g.querySelector(':scope > .ex-box')).strokeDasharray);
+    return { planned: dash('#exSvg .ex-node.decl.planned'), other: dash('#exSvg .ex-node.decl:not(.planned)') };`);
+  check("unplanned declarations are outlined dashed, planned ones solid",
+    outlines.planned.length > 0 && outlines.other.length > 0
+      && outlines.planned.every((d) => d === "none") && outlines.other.every((d) => d !== "none"),
+    `${outlines.planned.length} planned, ${outlines.other.length} unplanned sampled`);
 
   const errs = await evaluate("return (window.__errs||[]).length");
   check("no page errors", !errs);

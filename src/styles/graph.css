@@ -148,6 +148,12 @@
    the same token every other state colour on the page comes from. A stroke the drawing
    sets is a presentation attribute, which is why these override it; the selection is
    later still, so picking a flagged box shows the selection. */
+/* A declaration no plan names is one of the helpers holding the planned ones up: its
+   outline is dashed, so the plan's own nodes stand out solid among them. */
+.ex-node.decl:not(.planned)>.ex-box {
+  stroke-dasharray: 3 2
+}
+
 .ex-node.flag-axioms>.ex-box {
   stroke: var(--st-axioms)
 }
