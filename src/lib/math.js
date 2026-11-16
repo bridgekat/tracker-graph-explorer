@@ -2,8 +2,23 @@ import { Marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import katex from "katex";
 
-// Tokenize math before Markdown can consume its backslashes and underscores.
-export const markdown = new Marked(markedKatex({ nonStandard: true }));
+// Lean doc comments may wrap either kind of math across source lines.
+// Delimiter placement does not change display mode; Markdown still owns code.
+const display = /^\$\$((?:\\[\s\S]|[^\\])+?)\$\$/;
+const inline = /^\$(?!\$)((?:\\[\s\S]|[^\\$])+?)\$(?!\$)/;
+const extension = markedKatex({ nonStandard: true });
+for (const rule of extension.extensions) {
+  const block = rule.level === "block";
+  if (!block) rule.start = (src) => src.indexOf("$");
+  rule.tokenizer = (src) => {
+    const shown = display.exec(src);
+    const match = shown || (!block && inline.exec(src));
+    if (match) return {
+      type: rule.name, raw: match[0], text: match[1].trim(), displayMode: !!shown,
+    };
+  };
+}
+export const markdown = new Marked(extension);
 
 // Only KaTeX creates markup; the rest of a doc comment remains escaped Svelte text.
 export function math(node, token) {
