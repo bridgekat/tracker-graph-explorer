@@ -2,7 +2,7 @@
    No extension involved: this launches its own headless browser. */
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
-import { marked } from "marked";
+import { markdown as marked } from "../src/lib/math.js";
 import { createServer } from "node:http";
 import { readFile } from "node:fs";
 import { tmpdir } from "node:os";

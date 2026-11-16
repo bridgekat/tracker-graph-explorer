@@ -1,9 +1,9 @@
 <!-- A Lean doc comment. It is Markdown, and the interesting half of one is usually
      inside a code span — a norm or an operator in backticks inside bold — so it is
      worth parsing properly rather than approximately. marked does the parsing; this
-     renders its tokens, which keeps everything text rather than markup. -->
+     renders its tokens, keeping doc text escaped and math delegated to KaTeX. -->
 <script>
-  import { marked } from "marked";
+  import { markdown, math } from "./lib/math.js";
   import Inline from "./Inline.svelte";
   import Prose from "./Prose.svelte";
 
@@ -12,7 +12,7 @@
   const blocks = $derived(tokens ?? (text ? lex(String(text)) : []));
   function lex(s) {
     try {
-      return marked.lexer(s);
+      return markdown.lexer(s);
     } catch {
       return [{ type: "paragraph", tokens: [{ type: "text", text: s }] }];
     }
@@ -20,7 +20,7 @@
   /* a loose list item holds blocks; a tight one holds inline tokens */
   const loose = (item) =>
     (item.tokens ?? []).some(
-      (x) => x.type === "paragraph" || x.type === "list" || x.type === "code",
+      (x) => x.type === "paragraph" || x.type === "list" || x.type === "code" || x.type === "blockKatex",
     );
 </script>
 
@@ -28,6 +28,8 @@
   {#each blocks as t}
     {#if t.type === "space"}
       <!-- nothing -->
+    {:else if t.type === "blockKatex"}
+      <div use:math={t}></div>
     {:else if t.type === "paragraph"}
       <p><Inline tokens={t.tokens} /></p>
     {:else if t.type === "heading"}

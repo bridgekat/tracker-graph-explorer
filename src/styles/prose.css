@@ -114,3 +114,9 @@
 .prose s {
   color: var(--ink3)
 }
+
+/* Long display formulas scroll inside the detail pane. */
+.prose .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
