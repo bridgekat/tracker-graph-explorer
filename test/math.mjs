@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import katex from "katex";
-import { markdown } from "../src/lib/math.js";
+import { lexDocComment, markdown } from "../src/lib/math.js";
 
 const tokens = (text) => {
   const found = [];
@@ -41,4 +41,22 @@ assert.equal(formulas("\x60" + cg + "\x60").length, 0);
 assert.equal(formulas("\x60\x60\x60latex\n" + cg + "\n\x60\x60\x60").length, 0);
 assert.equal(formulas("$$a\\\\\n b$$ and $$c\\$d\n e$$").length, 2);
 
-console.log("Math token regression checks passed.");
+const citationUrl = "docs/references.html#ref_Demo%3A2026";
+const citationLinks = new Map([["Demo:2026", citationUrl]]);
+const links = (text) => {
+  const found = [];
+  markdown.walkTokens(lexDocComment(text, citationLinks), (t) => {
+    if (t.type === "link") found.push(t);
+  });
+  return found;
+};
+const [shortcut, labelled] = links("**[Demo:2026]** and [*A title*][Demo:2026].");
+assert.equal(shortcut.href, citationUrl);
+assert.equal(labelled.href, citationUrl);
+assert.equal(labelled.tokens[0].type, "em");
+assert.equal(links("[demo:2026] [unknown]").length, 0);
+assert.equal(links("\\[Demo:2026]").length, 0);
+assert.equal(links("\x60[Demo:2026]\x60 and $[Demo:2026]$").length, 0);
+assert.equal(links("\x60\x60\x60\n[Demo:2026]").length, 0);
+
+console.log("Markdown token regression checks passed.");

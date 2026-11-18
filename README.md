@@ -73,7 +73,7 @@ index.html#Numlib.Krylov.CR,CR.isMinResidualIterate    a declaration, after its 
 A build can bake a graph into the page, so a project's CI can publish a page about its own graph:
 
 ```
-TRACKER_GRAPH=graph.json TRACKER_DOCS=docs npm run build
+TRACKER_GRAPH=graph.json TRACKER_DOCS=docs TRACKER_REFERENCES=references.bib npm run build
 ```
 
 - `TRACKER_GRAPH` embeds the graph (gzipped). The page opens on it, offers it as a download, and
@@ -81,6 +81,9 @@ TRACKER_GRAPH=graph.json TRACKER_DOCS=docs npm run build
 - `TRACKER_DOCS` is the root of a [doc-gen4](https://github.com/leanprover/doc-gen4) site; the
   detail pane then links modules and declarations to their API docs. It requires
   `TRACKER_GRAPH`.
+- `TRACKER_REFERENCES` supplies the BibTeX citation keys. The detail pane links `[key]` and
+  `[label][key]` to the corresponding entry on the API docs References page. Use the same file
+  as doc-gen4 and set `TRACKER_DOCS`.
 
 `.github/workflows/pages.yml` publishes the plain page (no graph baked in) to GitHub Pages on
 every push to `main`.

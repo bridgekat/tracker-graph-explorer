@@ -20,6 +20,17 @@ for (const rule of extension.extensions) {
 }
 export const markdown = new Marked(extension);
 
+export function lexDocComment(text, citationLinks) {
+  if (!citationLinks.size) return markdown.lexer(text);
+  // Seed reference definitions without appending anything to the doc comment.
+  const lexer = new markdown.Lexer(markdown.defaults);
+  for (const [, key] of text.matchAll(/\[([a-z0-9:_-]+)\]/gi)) {
+    const href = citationLinks.get(key);
+    if (href) lexer.tokens.links[key.toLowerCase()] = { href };
+  }
+  return lexer.lex(text);
+}
+
 // Only KaTeX creates markup; the rest of a doc comment remains escaped Svelte text.
 export function math(node, token) {
   const render = (t) => katex.render(t.text, node, {

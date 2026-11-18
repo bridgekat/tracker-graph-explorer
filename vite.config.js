@@ -27,13 +27,22 @@ import { viteSingleFile } from "vite-plugin-singlefile";
    of numbers and gzip then says again for almost nothing. `data-encoding` names what was
    done, so a page built before this still reads, and base64 is what survives being HTML.
 
-   The root of the doc-gen4 site is a `<meta>`, and needs nothing done to it. */
+   The doc-gen4 root and the BibTeX citation keys are small enough to store as metadata. */
 function bake() {
   const path = process.env.TRACKER_GRAPH || "";
   const docs = (process.env.TRACKER_DOCS || "").replace(/\/+$/, "");
+  const bibliography = process.env.TRACKER_REFERENCES || "";
   if (docs && !path)
     throw new Error("TRACKER_DOCS is a place to link this project's declarations to, and "
       + "without TRACKER_GRAPH there are none in the page. Pass a graph as well, or neither.");
+  if (bibliography && !docs)
+    throw new Error("TRACKER_REFERENCES needs TRACKER_DOCS to link citations to the API docs.");
+  // Only entry headers and the key characters supported by doc-gen4 matter here.
+  const keys = bibliography
+    ? Array.from(readFileSync(bibliography, "utf8").matchAll(
+      /^[\t ]*@(?!comment\b|preamble\b|string\b)[a-z]+\s*[{(]\s*([a-z0-9:_-]+)\s*,/gim,
+    ), ([, key]) => key)
+    : [];
   const MB = (n) => (n / 1048576).toFixed(2);
   let graph = "";
   if (path) {
@@ -52,6 +61,9 @@ function bake() {
         tags: [
           ...(docs
             ? [{ tag: "meta", attrs: { name: "docs-root", content: docs }, injectTo: "head" }]
+            : []),
+          ...(keys.length
+            ? [{ tag: "meta", attrs: { name: "citation-keys", content: keys.join(" ") }, injectTo: "head" }]
             : []),
           ...(graph
             ? [{

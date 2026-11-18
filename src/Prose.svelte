@@ -3,7 +3,8 @@
      worth parsing properly rather than approximately. marked does the parsing; this
      renders its tokens, keeping doc text escaped and math delegated to KaTeX. -->
 <script>
-  import { markdown, math } from "./lib/math.js";
+  import { lexDocComment, math } from "./lib/math.js";
+  import { citationLinks } from "./lib/site.js";
   import Inline from "./Inline.svelte";
   import Prose from "./Prose.svelte";
 
@@ -12,7 +13,7 @@
   const blocks = $derived(tokens ?? (text ? lex(String(text)) : []));
   function lex(s) {
     try {
-      return markdown.lexer(s);
+      return lexDocComment(s, citationLinks);
     } catch {
       return [{ type: "paragraph", tokens: [{ type: "text", text: s }] }];
     }

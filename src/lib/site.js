@@ -55,3 +55,8 @@ export const docsRoot = meta ? meta.content.replace(/\/+$/, "") : "";
    are there. */
 export const moduleDocs = (module) => `${docsRoot}/${module.split(".").join("/")}.html`;
 export const declDocs = (module, id) => `${moduleDocs(module)}#${encodeURIComponent(id)}`;
+
+const citationKeys = document.querySelector('meta[name="citation-keys"]')?.content.split(" ") ?? [];
+const citationUrl = (key) => `${docsRoot}/references.html#ref_${encodeURIComponent(key)}`;
+export const citationLinks = new Map(citationKeys.map((key) => [key, citationUrl(key)]));
+export const citationHrefs = new Set(citationLinks.values());

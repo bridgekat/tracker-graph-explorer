@@ -365,12 +365,20 @@ try {
         rows: d.querySelectorAll("table tbody tr").length,
         pre: d.querySelectorAll("pre code").length,
         boldCode: d.querySelectorAll("b code").length,
+        citations: [...d.querySelectorAll(".prose a")].map((a) => ({
+          href: a.getAttribute("href"), text: a.textContent, emphasis: !!a.querySelector("i"),
+        })),
+        liesenText: d.querySelector(".prose")?.textContent.includes("[liesen2013krylov]"),
       };
     };
     const table = await pick("NumlibSurface.SaadSparse");
     const fenced = await pick("GolubVanLoan.Chapter01.algorithm_1_1_1");
     const bold = await pick("Numlib.Analysis.Sobolev.Boundary");
-    return { table, fenced, bold };
+    const liesen = await pick("NumlibSurface.LiesenStrakos");
+    const boehm = await pick("BSpline.bspline_eq_insert_comb");
+    const docs = document.querySelector('meta[name="docs-root"]')?.content;
+    const keys = document.querySelector('meta[name="citation-keys"]')?.content.split(" ") ?? [];
+    return { table, fenced, bold, liesen, boehm, docs, keys };
   `);
   check("a table in a doc comment renders as a table", mdDom.table && mdDom.table.rows > 20,
     (mdDom.table ? mdDom.table.rows : 0) + " rows");
@@ -378,6 +386,18 @@ try {
     (mdDom.fenced ? mdDom.fenced.pre : 0) + " code blocks");
   check("code inside bold is code", mdDom.bold && mdDom.bold.boldCode > 0,
     (mdDom.bold ? mdDom.bold.boldCode : 0) + " in Numlib.Analysis.Sobolev.Boundary");
+  const citation = (result, key) => result?.citations.find(
+    (a) => a.href === `${mdDom.docs}/references.html#ref_${key}`,
+  );
+  const liesen = citation(mdDom.liesen, "liesen2013krylov");
+  const boehm = citation(mdDom.boehm, "boehm1980inserting");
+  check("a bare citation links to its bibliography entry when configured",
+    mdDom.keys.includes("liesen2013krylov") ? liesen?.text === "[liesen2013krylov]"
+      : mdDom.liesen?.liesenText && !mdDom.liesen.citations.length);
+  check("a labelled citation keeps its text and emphasis when linked",
+    mdDom.keys.includes("boehm1980inserting")
+      ? boehm?.text === "Boehm, Inserting new knots into B-spline curves" && boehm.emphasis
+      : mdDom.boehm && !mdDom.boehm.citations.length);
 
   /* --- focusing a declaration deep inside a container --- */
   const deep = await evaluate(`
