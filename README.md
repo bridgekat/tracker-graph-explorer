@@ -36,7 +36,7 @@ browser.
 - **Colour.** Declarations are coloured by kind (definition or theorem), modules by area. The
   filled share of a box is how much of it is proved, counting planned declarations (or all
   declarations when none are planned).
-- **Outlines.** Planned declarations have bold names and solid outlines; declarations no plan
+- **Outlines.** Planned declarations have solid outlines; declarations no plan
   names have dashed outlines. A coloured outline marks a declaration that is marked wrong or rests
   on extra axioms.
 - **The number on a box** is chosen with the **Count** dropdown at the bottom: declarations, lines
@@ -58,8 +58,8 @@ A **neighbourhood** draws one declaration's complete cone: everything it depends
 that depends on it. The card at the top leads back to the full graph as you left it.
 
 The **index** (left) is the module tree with search; the **detail** pane (right) shows the
-selected node's state, description, sizes and dependencies, each a link. Both panes can be resized
-or folded.
+selected module and declaration names, the selected node's doc comment, and links to related nodes.
+The names link to API docs when available. Both panes can be resized or folded.
 
 The URL fragment names the selected node, so a link opens the page at that node:
 

@@ -1,53 +1,25 @@
-<!-- Whatever is selected, in full: its state, where it lives, its doc comment, and the
-     declarations it rests on and that rest on it — each one a way to go there. -->
+<!-- The selection's API documentation links, doc comment, and related nodes. -->
 <script>
-  import { Badge, Button } from "flowbite-svelte";
-  import { ArrowUpRightFromSquareOutline } from "flowbite-svelte-icons";
   import Prose from "./Prose.svelte";
   import StateDot from "./StateDot.svelte";
   import { declDocs, docsRoot, moduleDocs } from "./lib/site.js";
   import { app, select } from "./lib/state.svelte.js";
-  import { STATE_LABEL, fmt, plural } from "./lib/util.js";
-  import { METRICS, STATES, address } from "./lib/derive.js";
+  import { fmt, plural } from "./lib/util.js";
 
   const DEP_CAP = 60;
   const B = $derived(app.base);
-  const module = $derived(app.sel?.t === 0 ? B.tree[app.sel.i] : null);
   const decl = $derived(app.sel?.t === 1 ? B.decl[app.sel.i] : null);
-  const states = $derived(module ? STATES.filter((s) => module.byState[s]) : []);
-  /* how the project writes down which declaration this is: its module, then its name */
-  const addr = $derived(decl ? address(B, app.sel) : "");
+  const module = $derived(app.sel ? B.tree[decl ? decl.g : app.sel.i] : null);
+  const desc = $derived(decl ? decl.desc : module?.desc);
 
-  let copied = $state(false);
-  function copy(text) {
-    navigator.clipboard?.writeText(text);
-    copied = true;
-    setTimeout(() => (copied = false), 1200);
-  }
-
-  /* a state reads as its own colour, so the badge is tinted from the same token the
-     canvas paints with rather than from Flowbite's palette */
-  const stateStyle = (s) => `background: var(--nf-${s}); color: var(--ink)`;
   const H4 = "mt-4 mb-1.5 text-[11px] font-semibold tracking-wide text-gray-500 uppercase";
-  const WARN = `${H4} !text-orange-700 dark:!text-orange-400`;
   const ROW =
     "flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs " +
     "hover:bg-gray-100 dark:hover:bg-gray-800";
-  const MONO = "font-mono text-[11px] break-all";
   const MUTED = "text-xs text-gray-500";
+  const LINK = "underline decoration-gray-400 underline-offset-2 hover:decoration-current";
   const EXT = { target: "_blank", rel: "noopener noreferrer" };
-  /* the figures `tracker graph --metrics` exported, other than the count of declarations */
-  const figures = (m) =>
-    METRICS.filter(([k]) => k !== "decls" && B.meta.hasMetric[k] && m[k] !== undefined)
-      .map(([k, , unit]) => plural(m[k], unit));
 </script>
-
-{#snippet sizes(m)}
-  {@const fs = figures(m)}
-  {#if fs.length}
-    <p id="exSizes" class="mt-1.5 text-[11px] text-gray-500">{fs.join(" · ")}</p>
-  {/if}
-{/snippet}
 
 <div id="exDetail" class="min-h-0 flex-1 overflow-y-auto p-3">
   {#if !app.sel}
@@ -56,136 +28,62 @@
       rests on.
     </p>
   {:else if module}
-    <div class="mb-2 flex flex-wrap gap-1.5">
-      <Badge color="gray">module</Badge>
-      <Badge style={stateStyle(module.state)}>{STATE_LABEL[module.state]}</Badge>
-      {#if module.done}<Badge color="green">done</Badge>
-      {:else if module.ready}<Badge color="yellow">ready to work on</Badge>{/if}
-      {#if !module.exists}<Badge color="gray">not written yet</Badge>{/if}
-    </div>
-    <h3 class="text-base font-semibold text-gray-950 dark:text-white">{module.label}</h3>
-    <div class="mt-1 {MONO} text-gray-500">{module.name}</div>
-
-    <!-- a module has a page in the API docs once it exists -->
-    {#if docsRoot && module.exists}{@render docs(moduleDocs(module.name))}{/if}
-
-    <div class="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-      {#each states as s}
-        <i
-          style="background: var(--st-{s}); width: {((module.byState[s] / Math.max(1, module.goal)) * 100).toFixed(2)}%"
-          title="{fmt(module.byState[s])} {STATE_LABEL[s]}"
-        ></i>
-      {/each}
-    </div>
-    <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-700 dark:text-gray-300">
-      {#each states as s}
-        <span class="flex items-center gap-1.5">
-          <StateDot state={s} />
-          <b class="text-gray-950 tabular-nums dark:text-white">{fmt(module.byState[s])}</b>
-          {STATE_LABEL[s]}
-        </span>
-      {/each}
-    </div>
-
-    <p class="mt-1.5 text-[11px] text-gray-500">
-      {module.measured === "planned" ? "of its planned declarations" : "of its declarations; none are planned"}
-      · {plural(module.sub, "declaration")} in all
-    </p>
-    {@render sizes(module.metric)}
-
-    {#if module.desc}
-      <h4 class={H4}>What it is for</h4>
-      <Prose text={module.desc} />
+    <h3 class="text-base font-semibold break-all text-gray-950 dark:text-white">
+      {#if docsRoot && module.exists}
+        <a class={LINK} href={moduleDocs(module.name)} {...EXT}>{module.name}</a>
+      {:else}
+        {module.name}
+      {/if}
+    </h3>
+    {#if decl}
+      <p class="mt-1 font-mono text-xs break-all text-gray-700 dark:text-gray-300">
+        {#if docsRoot && decl.state !== "open"}
+          <a class={LINK} href={declDocs(module.name, decl.id)} {...EXT}>{decl.id}</a>
+        {:else}
+          {decl.id}
+        {/if}
+      </p>
+    {/if}
+    {#if desc}
+      <div class="mt-3"><Prose text={desc} /></div>
     {/if}
 
-    {#if module.kids.length}
-      <h4 class={H4}>{plural(module.kids.length, "module")} under it</h4>
-      <div class="flex flex-col">
-        {#each module.kids as k}
-          <button class={ROW} onclick={() => select({ t: 0, i: k }, true)}>
-            <StateDot state={B.tree[k].state} />
-            <span class="truncate">{B.tree[k].label}</span>
-            <span class="ms-auto shrink-0 font-mono text-[10px] tabular-nums text-gray-500">
-              {fmt(B.tree[k].sub)}
-            </span>
-          </button>
-        {/each}
-      </div>
-    {/if}
-    {#if module.decls.length}
-      <h4 class={H4}>{plural(module.decls.length, "declaration")} of its own</h4>
-      {@render list(module.decls)}
-    {/if}
-  {:else}
-    <div class="mb-2 flex flex-wrap gap-1.5">
-      <Badge color="gray">{decl.planned ? "planned " : ""}{decl.kind}</Badge>
-      <Badge style={stateStyle(decl.state)}>{STATE_LABEL[decl.state]}</Badge>
-      {#if decl.deprecated}<Badge color="red">deprecated</Badge>{/if}
-    </div>
-    <h3 class="{MONO} text-base font-semibold text-gray-950 dark:text-white">{decl.label}</h3>
-    <button
-      class="mt-1 {MONO} text-left text-gray-500 hover:underline"
-      onclick={() => select({ t: 0, i: decl.g }, true)}
-    >
-      module {B.tree[decl.g].name}
-    </button>
+    {#if decl}
+      <h4 class={H4}>Rests on {plural(B.dout[decl.i].length, "declaration")}</h4>
+      {#if B.dout[decl.i].length}
+        {@render list(B.dout[decl.i])}
+      {:else}
+        <p class={MUTED}>Nothing in the project; it stands on the ambient library alone.</p>
+      {/if}
 
-    <div
-      class="mt-2 flex items-start gap-2 rounded border border-gray-200 bg-gray-100 p-2
-             dark:border-gray-800 dark:bg-gray-800"
-    >
-      <code class="min-w-0 flex-1 {MONO} text-gray-700 dark:text-gray-300">{addr}</code>
-      <Button
-        size="xs"
-        color="alternative"
-        class="shrink-0 !px-2 !py-1 !text-[10px]"
-        onclick={() => copy(addr)}>{copied ? "copied" : "copy"}</Button
-      >
-    </div>
-    {@render sizes(decl.metric)}
-    {#if docsRoot && decl.state !== "open"}
-      {@render docs(declDocs(B.tree[decl.g].name, decl.id))}
-    {/if}
-
-    {#if decl.wrong}
-      <h4 class={WARN}>Marked wrong</h4>
-      <Prose text={decl.wrong} />
-    {/if}
-    {#if decl.deprecated}
-      <h4 class={WARN}>Deprecated</h4>
-      <Prose text={decl.deprecated} />
-    {/if}
-    {#if decl.desc}
-      <h4 class={H4}>Statement</h4>
-      <Prose text={decl.desc} />
-    {/if}
-    {#if decl.source}
-      <h4 class={H4}>Source</h4>
-      <p class="{MONO} text-gray-700 dark:text-gray-300">{decl.source}</p>
-    {/if}
-
-    <h4 class={H4}>Rests on {plural(B.dout[decl.i].length, "declaration")}</h4>
-    {#if B.dout[decl.i].length}
-      {@render list(B.dout[decl.i])}
+      <h4 class={H4}>{plural(B.din[decl.i].length, "declaration")} rest on it</h4>
+      {#if B.din[decl.i].length}
+        {@render list(B.din[decl.i])}
+      {:else}
+        <p class={MUTED}>Nothing in the project uses it yet.</p>
+      {/if}
     {:else}
-      <p class={MUTED}>Nothing in the project; it stands on the ambient library alone.</p>
-    {/if}
-
-    <h4 class={H4}>{plural(B.din[decl.i].length, "declaration")} rest on it</h4>
-    {#if B.din[decl.i].length}
-      {@render list(B.din[decl.i])}
-    {:else}
-      <p class={MUTED}>Nothing in the project uses it yet.</p>
+      {#if module.kids.length}
+        <h4 class={H4}>{plural(module.kids.length, "module")} under it</h4>
+        <div class="flex flex-col">
+          {#each module.kids as k}
+            <button class={ROW} onclick={() => select({ t: 0, i: k }, true)}>
+              <StateDot state={B.tree[k].state} />
+              <span class="truncate">{B.tree[k].label}</span>
+              <span class="ms-auto shrink-0 font-mono text-[10px] tabular-nums text-gray-500">
+                {fmt(B.tree[k].sub)}
+              </span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+      {#if module.decls.length}
+        <h4 class={H4}>{plural(module.decls.length, "declaration")} of its own</h4>
+        {@render list(module.decls)}
+      {/if}
     {/if}
   {/if}
 </div>
-
-<!-- the API docs are another site, so this opens in another tab -->
-{#snippet docs(href)}
-  <Button size="xs" color="alternative" class="mt-3" {href} {...EXT}>
-    API docs<ArrowUpRightFromSquareOutline class="ms-1.5 h-3 w-3" />
-  </Button>
-{/snippet}
 
 {#snippet list(items)}
   <div class="flex flex-col">

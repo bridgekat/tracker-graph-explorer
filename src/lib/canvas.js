@@ -30,14 +30,9 @@ const refOf = (n) => (n.kind === "module" ? { t: 0, i: n.gi } : { t: 1, i: n.di 
 let fonts = null;
 export function measure(n) {
   if (n.kind === "root") return;
-  /* A module's title is a module's title: an open container writes it in the same hand
-     its box wrote it in, so opening one changes where the title sits and nothing else.
-     A planned declaration is one of the key nodes of the graph, and writes its name in
-     bold; graph.css says the same, and this is what the box is sized for. */
   fonts ??= {
     decl: `400 11px ${css("--mono")}`,
-    planned: `600 11px ${css("--mono")}`,
-    module: `600 11px ${css("--sans")}`,
+    module: `400 11px ${css("--sans")}`,
   };
   const isModule = n.kind === "module";
   if (n.expanded) {
@@ -46,7 +41,7 @@ export function measure(n) {
     n.headW = Math.round(textWidth(n.label, fonts.module)) + NUM_W + TOG_W + 26;
     return;
   }
-  const font = isModule ? fonts.module : n.planned ? fonts.planned : fonts.decl;
+  const font = isModule ? fonts.module : fonts.decl;
   /* every box carries its own control, so every box keeps the room for one */
   const chrome = PAD_W + TOG_W + (n.showNum ? NUM_W : 0);
   /* ceil, so the room left for the label is never a fraction of a pixel short of

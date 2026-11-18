@@ -204,13 +204,23 @@ try {
     pinned.baked ? pinned.save && !pinned.open : pinned.open && !pinned.save,
     `${pinned.src}${pinned.baked ? ", baked in" : ""}`);
 
+  const index = await evaluate(String.raw`
+    const rows = [...document.querySelectorAll('#exTree .tw > span')];
+    return { hasRows: rows.length > 0,
+      searchAboveTree: document.getElementById('exTree').previousElementSibling.contains(
+        document.getElementById('exSearch')),
+      counts: rows.some(e => /^[\d,]+$/.test(e.textContent.trim())) };
+  `);
+  check("the index starts with search and shows no row counts",
+    index.hasRows && index.searchAboveTree && !index.counts);
+
   /* --- select: click the body of a box --- */
   let at = await evaluate(locate("Numlib.Krylov,"));
   await clickAt(...at.body);
   let after = await evaluate(`return {
     title: document.querySelector('#exDetail h3') && document.querySelector('#exDetail h3').textContent,
     sel: document.querySelectorAll('#exSvg .ex-node.sel').length }`);
-  check("click a box selects it", after.title === "Krylov" && after.sel === 1,
+  check("click a box selects it", after.title?.trim() === "Numlib.Krylov" && after.sel === 1,
     `detail=${after.title} outlined=${after.sel}`);
 
   /* where a box's control sits within it, and how wide the box is */
@@ -313,7 +323,7 @@ try {
   const stillKrylov = await evaluate(
     "return document.querySelector('#exDetail h3') && document.querySelector('#exDetail h3').textContent");
   check("drag from inside a box pans", cam2 !== cam3);
-  check("that drag does not select the box", stillKrylov === "Krylov", `detail=${stillKrylov}`);
+  check("that drag does not select the box", stillKrylov?.trim() === "Numlib.Krylov", `detail=${stillKrylov}`);
 
   /* --- an open container answers from its title strip, and not from the room inside ---
      Most of an open container is where its children sit, and a pointer crossing that on
@@ -354,12 +364,12 @@ try {
       return {
         rows: d.querySelectorAll("table tbody tr").length,
         pre: d.querySelectorAll("pre code").length,
-        boldCode: d.querySelectorAll("b code, i code").length,
+        boldCode: d.querySelectorAll("b code").length,
       };
     };
     const table = await pick("NumlibSurface.SaadSparse");
-    const fenced = await pick("Numlib.Krylov.BiLanczos");
-    const bold = await pick("Affine.Simplex.diam_mul_sin_sq_le");
+    const fenced = await pick("GolubVanLoan.Chapter01.algorithm_1_1_1");
+    const bold = await pick("Numlib.Analysis.Sobolev.Boundary");
     return { table, fenced, bold };
   `);
   check("a table in a doc comment renders as a table", mdDom.table && mdDom.table.rows > 20,
@@ -367,7 +377,7 @@ try {
   check("a fenced block renders as one", mdDom.fenced && mdDom.fenced.pre > 0,
     (mdDom.fenced ? mdDom.fenced.pre : 0) + " code blocks");
   check("code inside bold is code", mdDom.bold && mdDom.bold.boldCode > 0,
-    (mdDom.bold ? mdDom.bold.boldCode : 0) + " in diam_mul_sin_sq_le");
+    (mdDom.bold ? mdDom.bold.boldCode : 0) + " in Numlib.Analysis.Sobolev.Boundary");
 
   /* --- focusing a declaration deep inside a container --- */
   const deep = await evaluate(`
@@ -389,7 +399,7 @@ try {
     /* a shut box that holds something in the cone must stay lit, or the cone lies */
     const shutLit = [...document.querySelectorAll('#exSvg .ex-node.mod:not(.open):not(.dim)')].length;
     return {
-      sel: document.querySelector('#exDetail h3') && document.querySelector('#exDetail h3').textContent,
+      sel: document.querySelector('#exDetail h3')?.textContent.trim(),
       down: document.querySelectorAll('.ex-edge.lit-down').length,
       up: document.querySelectorAll('.ex-edge.lit-up').length,
       dim: document.querySelectorAll('.ex-node.dim').length,
@@ -399,7 +409,7 @@ try {
       faint, shutLit,
     };`);
   check("focusing a deep declaration lights the lines its cone runs along",
-    deep.sel === "isMinResidualIterate" && deep.down > 0 && deep.up > 0,
+    deep.sel === "Numlib.Krylov.CR" && deep.down > 0 && deep.up > 0,
     `${deep.down} down, ${deep.up} up`);
   check("dashed still means only a reversed edge", deep.dash === "none", deep.dash);
   /* Weight is not one of the things a lit line says: the two halves of the cone are told
@@ -413,45 +423,44 @@ try {
   check("shut boxes holding cone nodes stay lit", deep.shutLit > 0 && deep.dim > 0,
     `${deep.shutLit} lit shut boxes, ${deep.dim} dimmed`);
 
-  /* --- the link to the API docs, which a build has only if it was given a root ---
-     The declaration focused above is still the one in the pane, so this asks whether it
-     points at its own anchor on its own module's page. A build given no root must show
-     no link at all rather than one that goes nowhere. */
+  /* The module and declaration names are the links, followed directly by the doc comment. */
   const docs = await evaluate(`
-    const m = document.querySelector('meta[name="docs-root"]');
-    const a = [...document.querySelectorAll('#exDetail a')]
-      .find(a => a.textContent.trim().startsWith('API docs'));
-    return { root: m && m.content, href: a && a.getAttribute('href') };`);
-  check(docs.root ? "a declaration links to its own anchor in the API docs"
-    : "a build given no docs root links nowhere",
+    const root = document.querySelector('meta[name="docs-root"]')?.content;
+    const title = document.querySelector('#exDetail h3');
+    const subtitle = title.nextElementSibling;
+    return { root, module: title.querySelector('a')?.getAttribute('href'),
+      decl: subtitle.querySelector('a')?.getAttribute('href'), name: subtitle.textContent.trim(),
+      comment: !!subtitle.nextElementSibling.querySelector('.prose'),
+      deps: subtitle.nextElementSibling.nextElementSibling.textContent.trim() };`);
+  const modulePath = "/Numlib/Krylov/CR.html";
+  check("the declaration subtitle leads directly into its doc comment and dependencies",
+    docs.name === "CR.isMinResidualIterate" && docs.comment && docs.deps.startsWith("Rests on"));
+  check(docs.root ? "the names link to the module page and declaration anchor"
+    : "the names are plain text without a docs root",
     docs.root
-      ? (docs.href || "").startsWith(docs.root + "/Numlib/")
-        && docs.href.endsWith(".html#CR.isMinResidualIterate")
-      : !docs.href,
-    docs.href || "no link");
+      ? docs.module === docs.root + modulePath
+        && docs.decl === docs.root + modulePath + "#CR.isMinResidualIterate"
+      : !docs.module && !docs.decl);
 
-  /* --- the address bar, and a link back into the page ---
-     A node is addressed one way in this project — the module name, then the id the
-     thing is declared under — and the page says it in the URL and in the detail pane's
-     own box. The declaration focused above is still the one in the pane, so the address
-     is its. Then a fragment somebody else could have sent: setting one takes the page to
-     the node it names. */
-  const addr = await evaluate(`
-    return { hash: decodeURIComponent(location.hash).slice(1),
-             shown: document.querySelector('#exDetail code').textContent };`);
-  check("the address bar says which node you are on, in the one notation",
-    addr.hash === addr.shown && /^[^,]+\.[^,]+,.*isMinResidualIterate$/.test(addr.hash),
-    addr.hash || "nothing");
+  const searchWeights = await evaluate(`
+    return [...document.querySelectorAll('#exTree .tw .font-mono')]
+      .map(e => getComputedStyle(e).fontWeight);`);
+  check("index declarations use regular weight", searchWeights.length > 0
+    && searchWeights.every(w => w === "400"));
+
+  const addr = await evaluate("return decodeURIComponent(location.hash).slice(1)");
+  check("the address bar still identifies the selected declaration",
+    addr === "Numlib.Krylov.CR,CR.isMinResidualIterate", addr);
 
   const landed = await evaluate(`
     location.hash = '#Numlib.Eigen';
     await new Promise(r => setTimeout(r, 1200));
     ${SETTLE}
-    return { title: document.querySelector('#exDetail h3').textContent,
+    return { title: document.querySelector('#exDetail h3').textContent.trim(),
              sel: [...document.querySelectorAll('#exSvg .ex-node.sel')]
                .map(e => e.getAttribute('aria-label')) };`);
   check("a link into the page lands on the node it names",
-    landed.title === "Eigen" && landed.sel.length === 1
+    landed.title === "Numlib.Eigen" && landed.sel.length === 1
       && landed.sel[0].startsWith("Numlib.Eigen,"),
     `${landed.title}, outlined ${JSON.stringify(landed.sel)}`);
 
@@ -666,6 +675,14 @@ try {
     outlines.planned.length > 0 && outlines.other.length > 0
       && outlines.planned.every((d) => d === "none") && outlines.other.every((d) => d !== "none"),
     `${outlines.planned.length} planned, ${outlines.other.length} unplanned sampled`);
+
+  const graphWeights = await evaluate(`
+    return ['.mod .ex-lab', '.mod .ex-chead', '.decl.planned .ex-lab',
+      '.decl:not(.planned) .ex-lab', '.ex-cnum'].map(s => {
+        const label = document.querySelector('#exSvg ' + s);
+        return label && getComputedStyle(label).fontWeight;
+      });`);
+  check("graph labels and counts use regular weight", graphWeights.every(w => w === "400"));
 
   const errs = await evaluate("return (window.__errs||[]).length");
   check("no page errors", !errs);

@@ -4,7 +4,7 @@
   import { Search } from "flowbite-svelte";
   import StateDot from "./StateDot.svelte";
   import { app, select, toggleModule } from "./lib/state.svelte.js";
-  import { fmt, plural, hueBar, hueFill, hueLine, kindHue } from "./lib/util.js";
+  import { hueBar, hueFill, hueLine, kindHue } from "./lib/util.js";
 
   const LIST_CAP = 400;
   let query = $state("");
@@ -49,22 +49,7 @@
     return {
       modules,
       decls: decls.slice(0, Math.max(0, LIST_CAP - modules.length)).map((x) => x.d),
-      total: modules.length + decls.length,
     };
-  });
-
-  const meta = $derived.by(() => {
-    if (!app.base) return "";
-    if (hits) {
-      const shown = hits.modules.length + hits.decls.length;
-      return shown < hits.total
-        ? `${fmt(shown)} of ${fmt(hits.total)} matches shown`
-        : plural(hits.total, "match", "matches");
-    }
-    return (
-      `${fmt(rows.length)} rows · ${fmt(app.base.meta.nodes)} declarations ` +
-      `(${fmt(app.base.meta.planned)} planned) in ${fmt(app.base.meta.modules)} modules`
-    );
   });
 
   const isSel = (t, i) => app.sel?.t === t && app.sel.i === i;
@@ -75,7 +60,7 @@
   const KIND = "ms-auto shrink-0 text-[10px] text-gray-500";
   /* A declaration is coloured by what it is on the canvas; the same colour says the same
      thing here, from the same hue, so a row and its box read as the one declaration. */
-  const BADGE = "ms-auto shrink-0 rounded-sm px-1 text-[9.5px] font-medium";
+  const BADGE = "ms-auto shrink-0 rounded-sm px-1 text-[9.5px]";
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col">
@@ -90,8 +75,6 @@
       class="py-1.5 text-xs"
     />
   </div>
-
-  <div id="exIndexMeta" class="shrink-0 px-2 py-1.5 text-[10.5px] text-gray-500">{meta}</div>
 
   <div id="exTree" class="min-h-0 flex-1 overflow-y-auto pb-2">
     {#if hits}
@@ -113,10 +96,10 @@
           onclick={() => select({ t: 1, i: d.i }, true)}
         >
           <StateDot state={d.state} />
-          <span class="truncate font-mono {d.planned ? 'font-semibold' : ''}" title={d.id}>{d.id}</span>
+          <span class="truncate font-mono" title={d.id}>{d.id}</span>
         </button>
       {/each}
-      {#if !hits.total}
+      {#if !hits.modules.length && !hits.decls.length}
         <div class="p-3 text-xs text-gray-500">Nothing matches “{query}”.</div>
       {/if}
     {:else}
@@ -160,10 +143,9 @@
                          dark:bg-gray-800">ready</span
                 >
               {/if}
-              <span class="{KIND} font-mono tabular-nums">{fmt(row.t.sub)}</span>
               <span
-                class="h-1 w-9 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800"
-                title="{fmt(row.t.byState.proved)} of {fmt(row.t.goal)}{row.t.measured === 'planned' ? ' planned' : ''} proved"
+                class="ms-auto h-1 w-9 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800"
+                title="Proof progress"
               >
                 <i
                   class="block h-full"
@@ -181,7 +163,7 @@
             onclick={() => select({ t: 1, i: row.d.i }, true)}
           >
             <StateDot state={row.d.state} />
-            <span class="truncate font-mono {row.d.planned ? 'font-semibold' : ''}" title={row.d.id}>{row.d.label}</span>
+            <span class="truncate font-mono" title={row.d.id}>{row.d.label}</span>
             <span
               class={BADGE}
               style="background: {hueFill(hue, 0, app.dark)}; color: {hueLine(hue, 0, app.dark)}"
