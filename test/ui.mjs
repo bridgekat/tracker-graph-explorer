@@ -410,7 +410,7 @@ try {
   const tags = new Map(mdDom.references);
   check("a bare citation links to its bibliography entry with the supplied display tag",
     tags.has("liesen2013krylov")
-      ? liesen?.text === (tags.get("liesen2013krylov") ?? "[liesen2013krylov]")
+      ? liesen?.text === tags.get("liesen2013krylov")
       : mdDom.liesen?.liesenText && !mdDom.liesen.citations.length);
   check("a labelled citation keeps its text and emphasis when linked",
     tags.has("boehm1980inserting")

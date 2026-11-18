@@ -73,7 +73,7 @@ index.html#Numlib.Krylov.CR,CR.isMinResidualIterate    a declaration, after its 
 A build can bake a graph into the page, so a project's CI can publish a page about its own graph:
 
 ```
-TRACKER_GRAPH=graph.json TRACKER_DOCS=docs TRACKER_REFERENCES=references.bib npm run build
+TRACKER_GRAPH=graph.json TRACKER_DOCS=docs TRACKER_REFERENCES=references.json npm run build
 ```
 
 - `TRACKER_GRAPH` embeds the graph (gzipped). The page opens on it, offers it as a download, and
@@ -81,9 +81,12 @@ TRACKER_GRAPH=graph.json TRACKER_DOCS=docs TRACKER_REFERENCES=references.bib npm
 - `TRACKER_DOCS` is the root of a [doc-gen4](https://github.com/leanprover/doc-gen4) site; the
   detail pane then links modules and declarations to their API docs. It requires
   `TRACKER_GRAPH`.
-- `TRACKER_REFERENCES` accepts doc-gen4’s generated `doc-data/references.json` or the original
-  BibTeX file. Both link `[key]` and `[label][key]` to the API docs References page. The JSON also
-  supplies doc-gen4’s displayed tags for bare citations. Set `TRACKER_DOCS` for either input.
+- Set `TRACKER_REFERENCES` to doc-gen4’s generated `doc-data/references.json` to enable citations.
+  It links `[key]` and `[label][key]` to the API docs References page and supplies doc-gen4’s
+  display tags for bare citations. It requires `TRACKER_DOCS`.
+
+Paths in `TRACKER_GRAPH` and `TRACKER_REFERENCES` are relative to the directory running the build
+unless they are absolute.
 
 `.github/workflows/pages.yml` publishes the plain page (no graph baked in) to GitHub Pages on
 every push to `main`.

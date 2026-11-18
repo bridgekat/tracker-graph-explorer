@@ -1,21 +1,10 @@
 import { readFileSync, statSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { basename } from "node:path";
 import { gzipSync } from "node:zlib";
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
-
-function readCitations(path) {
-  const source = readFileSync(path, "utf8");
-  if (extname(path).toLowerCase() === ".json") {
-    return JSON.parse(source).map(({ citekey, tag }) => [citekey, tag]);
-  }
-  // Only entry headers and the key characters supported by doc-gen4 matter here.
-  return Array.from(source.matchAll(
-    /^[\t ]*@(?!comment\b|preamble\b|string\b)[a-z]+\s*[{(]\s*([a-z0-9:_-]+)\s*,/gim,
-  ), ([, key]) => [key, null]);
-}
 
 /* What a build may bake into the page, read from the environment, so that a job which
    has just exported a graph can publish a page that opens on that graph and links every
@@ -42,13 +31,15 @@ function readCitations(path) {
 function bake() {
   const path = process.env.TRACKER_GRAPH || "";
   const docs = (process.env.TRACKER_DOCS || "").replace(/\/+$/, "");
-  const bibliography = process.env.TRACKER_REFERENCES || "";
+  const references = process.env.TRACKER_REFERENCES;
   if (docs && !path)
     throw new Error("TRACKER_DOCS is a place to link this project's declarations to, and "
       + "without TRACKER_GRAPH there are none in the page. Pass a graph as well, or neither.");
-  if (bibliography && !docs)
+  if (references && !docs)
     throw new Error("TRACKER_REFERENCES needs TRACKER_DOCS to link citations to the API docs.");
-  const citations = bibliography ? readCitations(bibliography) : [];
+  const citations = references
+    ? JSON.parse(readFileSync(references, "utf8")).map(({ citekey, tag }) => [citekey, tag])
+    : [];
   const MB = (n) => (n / 1048576).toFixed(2);
   let graph = "";
   if (path) {

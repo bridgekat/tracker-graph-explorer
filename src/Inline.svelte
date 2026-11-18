@@ -22,7 +22,7 @@
       href={t.href}
       target="_blank"
       rel="noopener noreferrer"
-    >{#if t.raw === `[${t.text}]`}{citationTags.get(t.href) ?? t.raw}{:else}<Inline tokens={t.tokens} />{/if}</a>
+    >{#if t.raw === `[${t.text}]`}{citationTags.get(t.href)}{:else}<Inline tokens={t.tokens} />{/if}</a>
   {:else if t.type === "link" || t.type === "image"}
     <!-- a viewer of someone else's graph should not become a way to navigate
          somewhere, so a link contributes its words and not its href -->
