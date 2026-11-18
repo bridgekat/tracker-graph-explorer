@@ -379,8 +379,16 @@ try {
     const liesen = await pick("NumlibSurface.LiesenStrakos");
     const boehm = await pick("BSpline.bspline_eq_insert_comb");
     const docs = document.querySelector('meta[name="docs-root"]')?.content;
-    const keys = document.querySelector('meta[name="citation-keys"]')?.content.split(" ") ?? [];
-    return { table, fenced, bold, liesen, boehm, docs, keys };
+    const references = JSON.parse(document.getElementById("citationData")?.textContent ?? "[]");
+    await pick("SaadSparse.Chapter11.jdiag_11_1");
+    const monospace = [
+      "#exDetail h3", "#exDetail h3 + p", "#exDetail .prose code",
+      "#exTree .tw .font-mono", "#exSvg .decl .ex-lab", "#exSvg :is(.ex-num, .ex-cnum)", "#exZoomLab",
+    ].map(selector => {
+      const e = document.querySelector(selector);
+      return e && getComputedStyle(e).fontFamily;
+    });
+    return { table, fenced, bold, liesen, boehm, docs, references, monospace };
   `);
   check("a table in a doc comment renders as a table", mdDom.table && mdDom.table.rows > 20,
     (mdDom.table ? mdDom.table.rows : 0) + " rows");
@@ -391,16 +399,21 @@ try {
   const detailWeights = [mdDom.table, mdDom.bold, mdDom.boehm].map((d) => d?.weights);
   check("detail pane headings, prose, and declaration labels use regular weight",
     detailWeights.every(weights => weights?.length === 1 && weights[0] === "400"));
+  check("identifiers, code, and graph counts share the IBM Plex Mono stack",
+    mdDom.monospace[0]?.includes("IBM Plex Mono")
+      && mdDom.monospace.every(family => family === mdDom.monospace[0]));
   const citation = (result, key) => result?.citations.find(
     (a) => a.href === `${mdDom.docs}/references.html#ref_${key}`,
   );
   const liesen = citation(mdDom.liesen, "liesen2013krylov");
   const boehm = citation(mdDom.boehm, "boehm1980inserting");
-  check("a bare citation links to its bibliography entry when configured",
-    mdDom.keys.includes("liesen2013krylov") ? liesen?.text === "[liesen2013krylov]"
+  const tags = new Map(mdDom.references);
+  check("a bare citation links to its bibliography entry with the supplied display tag",
+    tags.has("liesen2013krylov")
+      ? liesen?.text === (tags.get("liesen2013krylov") ?? "[liesen2013krylov]")
       : mdDom.liesen?.liesenText && !mdDom.liesen.citations.length);
   check("a labelled citation keeps its text and emphasis when linked",
-    mdDom.keys.includes("boehm1980inserting")
+    tags.has("boehm1980inserting")
       ? boehm?.text === "Boehm, Inserting new knots into B-spline curves" && boehm.emphasis
       : mdDom.boehm && !mdDom.boehm.citations.length);
 

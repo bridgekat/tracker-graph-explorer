@@ -28,7 +28,7 @@
       rests on.
     </p>
   {:else if module}
-    <h3 class="text-base break-all text-gray-950 dark:text-white">
+    <h3 class="font-mono text-base break-all text-gray-950 dark:text-white">
       {#if docsRoot && module.exists}
         <a class={LINK} href={moduleDocs(module.name)} {...EXT}>{module.name}</a>
       {:else}

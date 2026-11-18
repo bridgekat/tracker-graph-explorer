@@ -1,6 +1,5 @@
-/* The palette, and the two fonts. lib/canvas.js reads --mono and --sans back out of
-   here at run time, and every rule that paints the drawing resolves against these,
-   so the graph follows the theme without the drawing knowing there is one.
+/* The palette and the canvas's sans-serif stack. The drawing reads the shared
+   monospace stack from app.css.
 
    One dark block, not two: "system" is resolved to a class in main.js, so the page
    is only ever explicitly light or explicitly dark and Tailwind, Flowbite and the
@@ -28,7 +27,6 @@
   --wash: rgba(11, 11, 11, .055);
   --edge: rgba(11, 11, 11, .34);
   --edgefaint: rgba(11, 11, 11, .14);
-  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 

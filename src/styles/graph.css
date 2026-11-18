@@ -122,7 +122,7 @@
 }
 
 .ex-lab {
-  font: 400 11px var(--mono)
+  font: 400 11px var(--font-mono)
 }
 
 /* a module's title is a module's title, open or shut */
@@ -133,7 +133,7 @@
 
 .ex-num,
 .ex-cnum {
-  font: 400 9.5px var(--mono)
+  font: 400 9.5px var(--font-mono)
 }
 
 /* Not every state is a stage of progress. A declaration resting on extra axioms, or one

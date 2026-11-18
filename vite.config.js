@@ -1,10 +1,21 @@
 import { readFileSync, statSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, extname } from "node:path";
 import { gzipSync } from "node:zlib";
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
+
+function readCitations(path) {
+  const source = readFileSync(path, "utf8");
+  if (extname(path).toLowerCase() === ".json") {
+    return JSON.parse(source).map(({ citekey, tag }) => [citekey, tag]);
+  }
+  // Only entry headers and the key characters supported by doc-gen4 matter here.
+  return Array.from(source.matchAll(
+    /^[\t ]*@(?!comment\b|preamble\b|string\b)[a-z]+\s*[{(]\s*([a-z0-9:_-]+)\s*,/gim,
+  ), ([, key]) => [key, null]);
+}
 
 /* What a build may bake into the page, read from the environment, so that a job which
    has just exported a graph can publish a page that opens on that graph and links every
@@ -27,7 +38,7 @@ import { viteSingleFile } from "vite-plugin-singlefile";
    of numbers and gzip then says again for almost nothing. `data-encoding` names what was
    done, so a page built before this still reads, and base64 is what survives being HTML.
 
-   The doc-gen4 root and the BibTeX citation keys are small enough to store as metadata. */
+   The doc-gen4 root and citation labels are small enough to embed alongside the graph. */
 function bake() {
   const path = process.env.TRACKER_GRAPH || "";
   const docs = (process.env.TRACKER_DOCS || "").replace(/\/+$/, "");
@@ -37,12 +48,7 @@ function bake() {
       + "without TRACKER_GRAPH there are none in the page. Pass a graph as well, or neither.");
   if (bibliography && !docs)
     throw new Error("TRACKER_REFERENCES needs TRACKER_DOCS to link citations to the API docs.");
-  // Only entry headers and the key characters supported by doc-gen4 matter here.
-  const keys = bibliography
-    ? Array.from(readFileSync(bibliography, "utf8").matchAll(
-      /^[\t ]*@(?!comment\b|preamble\b|string\b)[a-z]+\s*[{(]\s*([a-z0-9:_-]+)\s*,/gim,
-    ), ([, key]) => key)
-    : [];
+  const citations = bibliography ? readCitations(bibliography) : [];
   const MB = (n) => (n / 1048576).toFixed(2);
   let graph = "";
   if (path) {
@@ -62,8 +68,13 @@ function bake() {
           ...(docs
             ? [{ tag: "meta", attrs: { name: "docs-root", content: docs }, injectTo: "head" }]
             : []),
-          ...(keys.length
-            ? [{ tag: "meta", attrs: { name: "citation-keys", content: keys.join(" ") }, injectTo: "head" }]
+          ...(citations.length
+            ? [{
+              tag: "script",
+              attrs: { type: "application/json", id: "citationData" },
+              children: JSON.stringify(citations).replaceAll("<", "\\u003c"),
+              injectTo: "body",
+            }]
             : []),
           ...(graph
             ? [{

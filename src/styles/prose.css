@@ -12,7 +12,7 @@
 }
 
 .prose code {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 11px;
   background: var(--wash);
   border-radius: 2px;

@@ -31,7 +31,7 @@ let fonts = null;
 export function measure(n) {
   if (n.kind === "root") return;
   fonts ??= {
-    decl: `400 11px ${css("--mono")}`,
+    decl: `400 11px ${css("--font-mono")}`,
     module: `400 11px ${css("--sans")}`,
   };
   const isModule = n.kind === "module";

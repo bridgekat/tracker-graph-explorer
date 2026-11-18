@@ -81,9 +81,9 @@ TRACKER_GRAPH=graph.json TRACKER_DOCS=docs TRACKER_REFERENCES=references.bib npm
 - `TRACKER_DOCS` is the root of a [doc-gen4](https://github.com/leanprover/doc-gen4) site; the
   detail pane then links modules and declarations to their API docs. It requires
   `TRACKER_GRAPH`.
-- `TRACKER_REFERENCES` supplies the BibTeX citation keys. The detail pane links `[key]` and
-  `[label][key]` to the corresponding entry on the API docs References page. Use the same file
-  as doc-gen4 and set `TRACKER_DOCS`.
+- `TRACKER_REFERENCES` accepts doc-gen4’s generated `doc-data/references.json` or the original
+  BibTeX file. Both link `[key]` and `[label][key]` to the API docs References page. The JSON also
+  supplies doc-gen4’s displayed tags for bare citations. Set `TRACKER_DOCS` for either input.
 
 `.github/workflows/pages.yml` publishes the plain page (no graph baked in) to GitHub Pages on
 every push to `main`.
