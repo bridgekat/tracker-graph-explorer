@@ -22,12 +22,11 @@
 
 .prose b {
   color: var(--ink);
-  font-weight: 600
+  font-weight: inherit
 }
 
 .prose .ph {
   color: var(--ink);
-  font-weight: 600;
   font-size: 12px;
   margin-top: 12px
 }
@@ -100,7 +99,7 @@
 
 .prose th {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: inherit;
   background: var(--wash)
 }
 

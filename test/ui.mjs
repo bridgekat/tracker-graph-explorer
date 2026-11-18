@@ -365,6 +365,8 @@ try {
         rows: d.querySelectorAll("table tbody tr").length,
         pre: d.querySelectorAll("pre code").length,
         boldCode: d.querySelectorAll("b code").length,
+        weights: [...new Set([...d.querySelectorAll("h3, h4, .prose .ph, .prose b, .prose th, button .font-mono")]
+          .map(e => getComputedStyle(e).fontWeight))],
         citations: [...d.querySelectorAll(".prose a")].map((a) => ({
           href: a.getAttribute("href"), text: a.textContent, emphasis: !!a.querySelector("i"),
         })),
@@ -386,6 +388,9 @@ try {
     (mdDom.fenced ? mdDom.fenced.pre : 0) + " code blocks");
   check("code inside bold is code", mdDom.bold && mdDom.bold.boldCode > 0,
     (mdDom.bold ? mdDom.bold.boldCode : 0) + " in Numlib.Analysis.Sobolev.Boundary");
+  const detailWeights = [mdDom.table, mdDom.bold, mdDom.boehm].map((d) => d?.weights);
+  check("detail pane headings, prose, and declaration labels use regular weight",
+    detailWeights.every(weights => weights?.length === 1 && weights[0] === "400"));
   const citation = (result, key) => result?.citations.find(
     (a) => a.href === `${mdDom.docs}/references.html#ref_${key}`,
   );

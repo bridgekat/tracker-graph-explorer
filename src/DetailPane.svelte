@@ -12,7 +12,7 @@
   const module = $derived(app.sel ? B.tree[decl ? decl.g : app.sel.i] : null);
   const desc = $derived(decl ? decl.desc : module?.desc);
 
-  const H4 = "mt-4 mb-1.5 text-[11px] font-semibold tracking-wide text-gray-500 uppercase";
+  const H4 = "mt-4 mb-1.5 text-[11px] tracking-wide text-gray-500 uppercase";
   const ROW =
     "flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs " +
     "hover:bg-gray-100 dark:hover:bg-gray-800";
@@ -28,7 +28,7 @@
       rests on.
     </p>
   {:else if module}
-    <h3 class="text-base font-semibold break-all text-gray-950 dark:text-white">
+    <h3 class="text-base break-all text-gray-950 dark:text-white">
       {#if docsRoot && module.exists}
         <a class={LINK} href={moduleDocs(module.name)} {...EXT}>{module.name}</a>
       {:else}
@@ -90,7 +90,7 @@
     {#each items.slice(0, DEP_CAP) as di}
       <button class={ROW} onclick={() => select({ t: 1, i: di }, true)}>
         <StateDot state={B.decl[di].state} />
-        <span class="truncate font-mono {B.decl[di].planned ? 'font-semibold' : ''}" title={B.decl[di].id}>{B.decl[di].label}</span>
+        <span class="truncate font-mono" title={B.decl[di].id}>{B.decl[di].label}</span>
         <span class="ms-auto shrink-0 truncate text-[10px] text-gray-500">
           {B.tree[B.decl[di].g].label}
         </span>
